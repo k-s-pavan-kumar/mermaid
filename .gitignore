@@ -1,0 +1,12 @@
+node_modules/
+.next/
+.env
+.env.local
+data/db.local.json
+vault/
+
+# Playwright's Chromium download lands outside the repo, but keep any local
+# cache the dev browser writes out of git just in case.
+.dev-browser/
+*.zip
+*.env.example

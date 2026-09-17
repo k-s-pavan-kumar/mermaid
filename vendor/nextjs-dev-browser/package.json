@@ -1,0 +1,50 @@
+{
+  "name": "nextjs-dev-browser",
+  "version": "1.1.0",
+  "description": "Ephemeral, localhost-only Playwright browser that auto-opens when `next dev` starts and wipes cache/cookies/storage on close — without touching your everyday browser profile.",
+  "license": "MIT",
+  "main": "lib/localhost-browser.js",
+  "bin": {
+    "dev-browser": "bin/cli.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "scripts",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall.js"
+  },
+  "keywords": [
+    "nextjs",
+    "next.js",
+    "playwright",
+    "dev-server",
+    "browser",
+    "localhost",
+    "developer-tools"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "playwright": "^1.47.0"
+  },
+  "peerDependencies": {
+    "next": ">=13"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/nextjs-dev-browser.git"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

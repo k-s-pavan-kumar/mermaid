@@ -1,0 +1,61 @@
+import { table } from '@/lib/data';
+import type { Client } from './types';
+import type { Project } from '@/features/projects/types';
+import type { Task } from '@/features/today/types';
+import type { Note } from '@/features/notes/types';
+import type { Meeting } from '@/features/meetings/types';
+import { getBillingForClient } from '@/features/billing/queries';
+import { grandTotal } from '@/features/billing/types';
+
+export async function getClients(ownerId: string): Promise<Client[]> {
+  const clients = await table<Client>('clients').where((c) => c.owner_id === ownerId);
+  return clients.sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function getClientById(id: string): Promise<Client | undefined> {
+  return table<Client>('clients').find(id);
+}
+
+export async function getClientByToken(token: string): Promise<Client | undefined> {
+  const rows = await table<Client>('clients').where((c) => !!c.portal_token && c.portal_token === token);
+  return rows[0];
+}
+
+/**
+ * Everything that belongs to one client, in one read — this is what turns
+ * the client page from a contact card into a workspace: their projects,
+ * the open work across those projects, notes, meetings and money, without
+ * the page having to know how any of those features store their rows.
+ */
+export async function getClientWorkspace(clientId: string) {
+  const client = await getClientById(clientId);
+  if (!client) return undefined;
+
+  const projects = await table<Project>('projects').where((p) => p.client_id === clientId);
+  const projectIds = projects.map((p) => p.id);
+
+  const [tasks, notes, meetings, billing] = await Promise.all([
+    table<Task>('tasks').where((t) => !!t.project_id && projectIds.includes(t.project_id)),
+    table<Note>('notes').where((n) => n.client_id === clientId || (!!n.project_id && projectIds.includes(n.project_id))),
+    table<Meeting>('meetings').where((m) => m.client_id === clientId),
+    getBillingForClient(clientId, projectIds),
+  ]);
+
+  const invoiced = billing.invoices
+    .filter((i) => i.status !== 'draft')
+    .reduce((s, i) => s + grandTotal(i), 0);
+  const paid = billing.invoices
+    .filter((i) => i.status === 'paid')
+    .reduce((s, i) => s + grandTotal(i), 0);
+
+  return {
+    client,
+    projects: projects.sort((a, b) => a.name.localeCompare(b.name)),
+    tasks: tasks.sort((a, b) => Number(a.done) - Number(b.done)),
+    notes,
+    meetings: meetings.sort((a, b) => b.starts_at.localeCompare(a.starts_at)),
+    invoices: billing.invoices,
+    quotes: billing.quotes,
+    money: { invoiced, paid, outstanding: Math.round((invoiced - paid) * 100) / 100 },
+  };
+}
