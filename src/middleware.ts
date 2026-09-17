@@ -23,18 +23,27 @@
 // };
 
 
-
 import { NextRequest, NextResponse } from 'next/server';
+import { getSupabaseUser } from '@/lib/supabase/middleware';
 
 const COOKIE_NAME = 'meridian_session';
 // /portal/<token> is deliberately public — the token is the credential, and
 // the page it serves is read-only (see src/app/portal/[token]/page.tsx).
 const PUBLIC_PATHS = ['/login', '/api/auth/login', '/portal/'];
+const USE_SUPABASE_AUTH = process.env.DATA_PROVIDER === 'supabase';
 
-export function middleware(req: NextRequest) {
+export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
     return NextResponse.next();
+  }
+
+  if (USE_SUPABASE_AUTH) {
+    const { response, user } = await getSupabaseUser(req);
+    if (!user) {
+      return NextResponse.redirect(new URL('/login', req.url));
+    }
+    return response;
   }
 
   if (!req.cookies.has(COOKIE_NAME)) {
