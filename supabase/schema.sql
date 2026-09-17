@@ -155,6 +155,32 @@ create index meetings_client_idx on meetings(client_id);
 create index meetings_starts_idx on meetings(starts_at);
 
 -- ---------------------------------------------------------------------------
+-- Tasks — brain dump + timebox live in one table.
+-- scheduled_date/scheduled_hour both null  = sitting in the brain dump.
+-- both set                                  = placed on the Today timebox.
+-- Defined here (before focus_sessions) because focus_sessions.task_id
+-- references tasks(id) and Postgres processes CREATE TABLE in file order.
+-- ---------------------------------------------------------------------------
+create table tasks (
+  id               uuid primary key default uuid_generate_v4(),
+  owner_id         uuid not null references auth.users(id) default auth.uid(),
+  project_id       uuid references projects(id) on delete set null,
+  title            text not null,
+  dump_date        date not null default current_date,
+  scheduled_date   date,
+  scheduled_hour   int check (scheduled_hour between 0 and 23),
+  duration_hours   int not null default 1 check (duration_hours between 1 and 8),
+  done             boolean not null default false,
+  -- The date this task was picked as that day's ONE thing. A date rather
+  -- than a boolean so yesterday's choice doesn't silently become today's.
+  focus_date       date,
+  created_at       timestamptz not null default now()
+);
+
+create index tasks_schedule_idx on tasks(owner_id, scheduled_date, scheduled_hour);
+create unique index tasks_one_thing_idx on tasks(owner_id, focus_date) where focus_date is not null;
+
+-- ---------------------------------------------------------------------------
 -- Focus sessions — recorded because "where did the day go" is unanswerable
 -- from a task list alone: a day can be full of real work and show nothing
 -- ticked off. Stopping a timer early still writes a row.
@@ -247,30 +273,6 @@ create table notes (
 );
 
 create unique index notes_vault_path_owner_idx on notes(owner_id, vault_path);
-
--- ---------------------------------------------------------------------------
--- Tasks — brain dump + timebox live in one table.
--- scheduled_date/scheduled_hour both null  = sitting in the brain dump.
--- both set                                  = placed on the Today timebox.
--- ---------------------------------------------------------------------------
-create table tasks (
-  id               uuid primary key default uuid_generate_v4(),
-  owner_id         uuid not null references auth.users(id) default auth.uid(),
-  project_id       uuid references projects(id) on delete set null,
-  title            text not null,
-  dump_date        date not null default current_date,
-  scheduled_date   date,
-  scheduled_hour   int check (scheduled_hour between 0 and 23),
-  duration_hours   int not null default 1 check (duration_hours between 1 and 8),
-  done             boolean not null default false,
-  -- The date this task was picked as that day's ONE thing. A date rather
-  -- than a boolean so yesterday's choice doesn't silently become today's.
-  focus_date       date,
-  created_at       timestamptz not null default now()
-);
-
-create index tasks_schedule_idx on tasks(owner_id, scheduled_date, scheduled_hour);
-create unique index tasks_one_thing_idx on tasks(owner_id, focus_date) where focus_date is not null;
 
 -- ---------------------------------------------------------------------------
 -- Integrations — the connector registry. One row per external tool this
