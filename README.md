@@ -370,3 +370,109 @@ change the devDependency from the `file:` path to a version range.
 ### New tables
 `focus_sessions` (local store and `supabase/schema.sql`), plus `focus_date`
 on tasks for the one-thing pick.
+
+---
+
+## This pass: Dashboard, targets, and a half-hour grid
+
+### The logout button showed a UUID
+Not a display bug so much as two different ideas sharing one function.
+`getSessionEmail()` returns an *owner id* — under `DATA_PROVIDER=supabase`
+that is the Auth user's UUID, which is exactly what `owner_id` columns and
+RLS's `auth.uid()` compare against. Correct for queries, wrong to show a
+person.
+
+There is now a separate `getSessionDisplayName()` in `src/lib/auth/session.ts`
+used **only** for the label in the sidebar and `AppNav`. It returns the Auth
+user's email under Supabase (falling back through `user_metadata.email`,
+`full_name`, then phone, since an OAuth- or phone-only identity legitimately
+has no email) and the login email under local. Nothing else changed: making
+`getSessionEmail()` itself return an email would have silently broken every
+`owner_id` comparison and your row-level security policies.
+
+### Half-hour timebox
+The Today grid is 48 half-hour slots instead of 24 hourly rows. Every slot is
+its own drop target, so 9:30 is as easy to hit as 9:00, and dragging a block's
+bottom edge resizes in 30-minute steps with a live `1h 30m` read-out. An hour
+still reads as the same 46px band it always did — the `:30` divider is drawn
+lighter so the finer grid doesn't make the day harder to scan. Blocks show
+their own time range, and a 30-minute block collapses to a single line rather
+than clipping.
+
+This is **additive at the schema level**, which is the important part: two new
+nullable columns, `tasks.scheduled_minute` (0 or 30) and
+`tasks.duration_minutes` (30-minute steps). A null minute means `:00` and a
+null `duration_minutes` falls back to `duration_hours * 60` — which is
+precisely how every row written under the old whole-hour model already
+behaves, so nothing needs backfilling and existing blocks land exactly where
+they always did. `duration_hours` is still written (rounded up) alongside
+`duration_minutes` so older readers and the original whole-hour CHECK
+constraint keep working.
+
+All reads go through `src/features/today/time.ts` — `startMinutes()`,
+`durationMinutes()`, `fmtRange()` — so no call site has to know which of the
+two shapes a given row is in. The week calendar keeps hourly *cells* (seven
+columns of half-hour rows is unreadable) but offsets and sizes blocks by their
+real minutes, and dropping on the bottom half of a cell gives you `:30`.
+
+### Dashboard
+A new `/dashboard`, paired with Today through a switch in the topbar
+(`g d`, and a sidebar entry). Login still lands on Today; the Dashboard is the
+step back you take when you want it.
+
+- **Financial year** — paid vs. your goal, with a pace notch showing where
+  you'd be if the year earned evenly. Honours a non-January financial year
+  (`fiscal_year_start_month`, defaulting to April), because getting that wrong
+  silently mis-scopes every "this year so far" figure. Only money actually
+  **paid** counts; invoiced-but-unpaid sits beside it, never folded in.
+- **Week and month targets** — focused hours, tasks completed, active days,
+  revenue, each with the same pace notch.
+- **Where the 24 hours go** — a donut over today, an average day this week, or
+  an average day this month.
+- **Month by month** — twelve stacked bars on one shared scale, so a longer bar
+  really is a busier month, plus a per-day strip for the current month.
+
+Charts are plain SVG in `src/features/dashboard/components/Charts.tsx`. No
+charting library was added: a donut is an arc and a stacked bar is a row of
+spans, and a dependency to draw two shapes is a poor trade.
+
+#### How the 24-hour split is counted
+The one genuinely tricky decision. A block on the timebox and a focus session
+against that same project are usually the *same* hour of your life recorded
+twice — once as an intention, once as an outcome. So per category:
+
+```
+minutes = focus minutes + max(0, planned block minutes − focus minutes)
+```
+
+A timer that ran counts as itself; a planned block contributes only whatever
+it claimed *beyond* what the timer already covered. Meetings are counted
+separately because they are genuinely additional time. If overlapping records
+somehow claim more than 24 hours, they are scaled back proportionally rather
+than producing a pie that sums to more than a day. Whatever is left becomes
+**unaccounted** rather than being quietly dropped — a day where you tracked
+three hours should look like a day where you tracked three hours.
+
+Nothing here asks you to log anything new. Every figure is derived from focus
+sessions, scheduled blocks, meetings and invoices the rest of the app already
+writes.
+
+### Targets
+Set in **Settings → Targets & goals**, stored in the existing `settings` jsonb
+row (so adding a target is never a migration). Every number defaults to `0`,
+meaning "not tracking this" — that target simply disappears from the Dashboard
+instead of showing a meaningless 0-of-0 bar. A fresh install therefore shows
+the real picture of where time and money went without inventing goals you
+never set.
+
+### Verifying
+`npm run verify:dashboard` covers the pieces that are easy to get quietly
+wrong: that old whole-hour rows still land in the same place, that resizes
+snap and clamp correctly, that a focus session and its timebox block are not
+double-counted, that every day sums to exactly 24 hours, and that financial
+years, leap Februaries and `paid_at`-dated revenue all behave.
+
+### Schema changes
+`tasks.scheduled_minute`, `tasks.duration_minutes`, `settings.targets` — all
+additive, with copy-paste `alter table` statements in the migration block at
+the top of `supabase/schema.sql`.

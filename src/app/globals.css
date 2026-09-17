@@ -512,3 +512,119 @@ img{max-width:100%;height:auto;}
 .month-legend .sw.lvl-2{background:var(--pine-soft);}
 .month-legend .sw.lvl-3{background:#C9B8FF;}
 @media (max-width:620px){.mb-day{min-height:58px;}.mb-metrics{display:none;}}
+
+/* ---------- Today: half-hour timebox grid ----------
+   48 slots of 23px, so an hour still reads as the familiar 46px band. The
+   :30 divider is drawn lighter than the :00 divider — the finer grid is for
+   dropping and resizing, not for making the day harder to scan. */
+.timebox-slot{display:grid;grid-template-columns:62px 1fr;height:23px;border-bottom:1px solid var(--border-light);}
+.timebox-slot.half{border-bottom-style:dashed;border-bottom-color:#F4F1FE;}
+.timebox-slot:last-child{border-bottom:none;}
+.timebox-slot .hour-label{font-size:11px;color:var(--muted);font-family:'IBM Plex Mono',monospace;padding:3px 9px;border-right:1px solid var(--border-light);line-height:1.4;}
+.timebox-slot.half .hour-label{border-right-color:var(--border-light);}
+.timebox-slot.night{background:#FAF9FE;}
+.timebox-slot.night .hour-label{opacity:.55;}
+.timebox-slot.over{background:var(--pine-soft);}
+.timebox-slot.over .hour-label{color:var(--pine);}
+@media (max-width:480px){.timebox-slot{grid-template-columns:46px 1fr;}}
+
+.tb-block-inner{display:flex;justify-content:space-between;gap:8px;padding:5px 9px;height:100%;overflow:hidden;}
+.tb-title{font-size:12.5px;color:var(--pine);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.3;}
+.tb-time{font-size:10px;color:var(--pine);opacity:.72;font-family:'IBM Plex Mono',monospace;margin-top:2px;white-space:nowrap;}
+/* A 30-minute block is 23px tall — one line only. */
+.tb-block-abs.compact .tb-block-inner{padding:3px 9px;align-items:center;}
+.tb-block-abs.compact .tb-title{font-size:11.5px;}
+.tb-block-abs.compact .tb-time{display:none;}
+.tb-block-abs.resizing{box-shadow:0 2px 10px rgba(95,61,235,.28);z-index:3;}
+.tb-resize-pill{position:absolute;right:6px;bottom:6px;background:var(--pine);color:#fff;font-size:10px;font-family:'IBM Plex Mono',monospace;border-radius:20px;padding:1px 8px;pointer-events:none;}
+/* Week view: blocks are positioned and sized by real minutes, so a 30-min
+   block has to survive being ~20px tall. */
+.week-event{position:relative;}
+.week-event.short{padding:2px 7px;}
+.week-event.short .sub{display:none;}
+.week-event.short .ttl{font-size:10.5px;}
+
+/* ---------- Today / Dashboard view switch ---------- */
+.topbar-lead{display:flex;align-items:center;gap:18px;flex-wrap:wrap;min-width:0;}
+.view-tabs{display:inline-flex;background:var(--sidebar);border:1px solid var(--border);border-radius:9px;padding:3px;gap:2px;flex-shrink:0;}
+.view-tab{padding:5px 14px;border-radius:7px;font-size:13px;text-decoration:none;color:var(--muted);white-space:nowrap;}
+.view-tab:hover{color:var(--ink);}
+.view-tab.active{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:0 1px 2px rgba(28,18,64,.09);}
+@media (max-width:820px){.topbar-lead{gap:10px;}.view-tab{padding:5px 11px;font-size:12.5px;}}
+
+/* ---------- Dashboard: charts ---------- */
+.donut-center-top{font-family:'Fraunces',serif;font-size:24px;fill:var(--ink);}
+.donut-center-bottom{font-size:10.5px;fill:var(--muted);font-family:'IBM Plex Mono',monospace;letter-spacing:.04em;}
+
+.chart-legend{list-style:none;margin:0 0 12px;padding:0;display:flex;flex-direction:column;gap:2px;}
+.chart-legend li{display:flex;align-items:center;gap:9px;font-size:12.5px;padding:4px 0;border-bottom:1px solid var(--border-light);transition:opacity .15s;}
+.chart-legend li:last-child{border-bottom:none;}
+.chart-legend li.dim{opacity:.4;}
+.lg-sw{width:10px;height:10px;border-radius:3px;flex-shrink:0;}
+.lg-label{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.lg-val{font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:var(--ink);flex-shrink:0;display:flex;gap:9px;align-items:baseline;}
+.lg-pct{color:var(--muted);min-width:34px;text-align:right;}
+
+/* target bars */
+.target-row{margin-bottom:14px;}
+.target-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:5px;}
+.target-label{font-size:12.5px;color:var(--muted);}
+.target-val{font-size:13px;font-weight:600;font-variant-numeric:tabular-nums;}
+.target-val.hit{color:var(--sage);}
+.target-of{font-weight:400;color:var(--muted);font-size:11.5px;}
+.target-track{position:relative;height:9px;border-radius:20px;background:var(--border-light);overflow:visible;}
+.target-fill{display:block;height:100%;border-radius:20px;background:var(--pine);transition:width .25s;}
+.target-fill.behind{background:var(--gold);}
+.target-fill.hit{background:var(--sage);}
+.target-pace{position:absolute;top:-3px;width:2px;height:15px;border-radius:2px;background:var(--ink);opacity:.45;}
+
+.mini-stats{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);border-top:1px solid var(--border-light);padding-top:10px;margin-top:4px;}
+.mini-stats b{color:var(--ink);font-family:'Fraunces',serif;font-size:14px;}
+
+/* year goal */
+.year-goal{padding:18px 20px;}
+.year-goal-main{display:flex;justify-content:space-between;gap:24px;flex-wrap:wrap;align-items:flex-start;}
+.yg-label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);}
+.yg-value{font-family:'Fraunces',serif;font-size:38px;line-height:1.1;margin-top:2px;}
+.yg-sub{font-size:12.5px;color:var(--muted);margin-top:4px;}
+.yg-ahead{color:var(--sage);}
+.yg-behind{color:var(--gold);}
+.yg-secondary{display:grid;grid-template-columns:repeat(4,minmax(96px,1fr));gap:10px;flex:1 1 380px;}
+@media (max-width:700px){.yg-secondary{grid-template-columns:repeat(2,1fr);}.yg-value{font-size:30px;}}
+.yg-bar-wrap{margin-top:18px;border-top:1px solid var(--border-light);padding-top:14px;}
+.yg-legend{font-size:11.5px;line-height:1.5;}
+
+/* 24h pie */
+.day-pie{display:grid;grid-template-columns:260px 1fr;gap:24px;align-items:start;}
+@media (max-width:760px){.day-pie{grid-template-columns:1fr;}}
+.day-pie-chart{display:flex;flex-direction:column;align-items:center;}
+.scope-chip{font-size:12px;padding:6px 14px;border-radius:20px;border:1px solid var(--border);color:var(--muted);background:var(--surface);}
+.scope-chip:hover{background:var(--sidebar-hover);color:var(--ink);}
+.scope-chip.active{color:#fff;font-weight:500;border-color:var(--ink);background:var(--ink);}
+
+/* stacked bars */
+.sbar{display:flex;height:14px;border-radius:20px;overflow:hidden;background:var(--border-light);min-width:0;}
+.sbar.empty{background:var(--border-light);}
+.sbar-seg{display:block;height:100%;transition:opacity .15s;}
+
+.month-spread{display:flex;flex-direction:column;gap:7px;margin-bottom:14px;}
+.ms-row{display:grid;grid-template-columns:38px 1fr 116px;align-items:center;gap:12px;}
+.ms-row.future{opacity:.4;}
+.ms-row.now .ms-label{color:var(--pine);font-weight:700;}
+.ms-label{font-size:11.5px;font-family:'IBM Plex Mono',monospace;color:var(--muted);}
+.ms-figs{display:flex;justify-content:flex-end;gap:10px;font-size:11.5px;font-family:'IBM Plex Mono',monospace;}
+.ms-hours{color:var(--pine);min-width:42px;text-align:right;}
+.ms-money{color:var(--muted);min-width:56px;text-align:right;}
+@media (max-width:600px){.ms-row{grid-template-columns:32px 1fr 92px;gap:8px;}.ms-figs{gap:6px;font-size:10.5px;}}
+
+/* daily strip */
+.day-strip{display:flex;gap:3px;align-items:flex-end;overflow-x:auto;padding-bottom:4px;}
+.ds-col{flex:1 1 0;min-width:16px;display:flex;flex-direction:column;align-items:center;gap:4px;text-decoration:none;}
+.ds-bar-wrap{width:100%;height:74px;display:flex;align-items:flex-end;background:var(--border-light);border-radius:4px;overflow:hidden;}
+.ds-bar{width:100%;background:var(--pine);border-radius:4px 4px 0 0;min-height:2px;}
+.ds-col:hover .ds-bar{background:var(--violet);}
+.ds-col.future{opacity:.35;}
+.ds-col.today .ds-bar-wrap{outline:2px solid var(--pine);outline-offset:1px;}
+.ds-num{font-size:9.5px;color:var(--muted);font-family:'IBM Plex Mono',monospace;}
+
+.field-group-label{font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--pine);font-weight:600;margin-top:6px;padding-bottom:5px;border-bottom:1px solid var(--border-light);}

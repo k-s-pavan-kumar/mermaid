@@ -12,7 +12,7 @@ export interface PaletteItem {
 
 // Global keyboard layer. Two idioms, both familiar:
 //   ⌘K / Ctrl+K  → fuzzy command palette over pages + your real projects/clients
-//   g then t/a/p/c/b/n/s → vim-style "go to" jumps
+//   g then t/d/a/p/c/b/n/s → vim-style "go to" jumps
 //   ?            → shortcut cheatsheet
 // Shortcuts are suppressed while typing in an input so they never eat text.
 export function CommandPalette({ items }: { items: PaletteItem[] }) {
@@ -66,7 +66,7 @@ export function CommandPalette({ items }: { items: PaletteItem[] }) {
 
       if (pendingG.current) {
         pendingG.current = false;
-        const map: Record<string, string> = { t: '/today', a: '/calendar', p: '/projects', c: '/clients', b: '/billing', n: '/notes', s: '/settings' };
+        const map: Record<string, string> = { t: '/today', d: '/dashboard', a: '/calendar', p: '/projects', c: '/clients', b: '/billing', n: '/notes', s: '/settings' };
         const dest = map[e.key.toLowerCase()];
         if (dest) { e.preventDefault(); router.push(dest); }
         return;
@@ -116,6 +116,7 @@ export function CommandPalette({ items }: { items: PaletteItem[] }) {
             {[
               ['⌘K / Ctrl+K', 'Command palette'],
               ['g then t', 'Go to Today'],
+              ['g then d', 'Go to Dashboard'],
               ['g then p', 'Go to Projects'],
               ['g then c', 'Go to Clients'],
               ['g then a', 'Go to Calendar'],

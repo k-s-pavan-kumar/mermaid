@@ -1,7 +1,8 @@
-import { getSessionEmail } from '@/lib/auth/session';
+import { getSessionEmail, getSessionDisplayName } from '@/lib/auth/session';
 
 const ICONS: Record<string, React.ReactNode> = {
   today: (<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></>),
+  dashboard: (<><path d="M4 19a8 8 0 1116 0" /><path d="M12 19l4.5-6" /><circle cx="12" cy="19" r="1.2" /></>),
   projects: (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M8 4v5" /></>),
   clients: (<><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" /><circle cx="17.5" cy="9" r="2.6" /><path d="M15 20c.3-2.6 1.9-4.5 4-5" /></>),
   calendar: (<><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></>),
@@ -13,6 +14,7 @@ const ICONS: Record<string, React.ReactNode> = {
 
 const LINKS = [
   { href: '/today', label: 'Today', key: 'today', hint: 'g t' },
+  { href: '/dashboard', label: 'Dashboard', key: 'dashboard', hint: 'g d' },
   { href: '/calendar', label: 'Calendar', key: 'calendar', hint: 'g a' },
   { href: '/projects', label: 'Projects', key: 'projects', hint: 'g p' },
   { href: '/clients', label: 'Clients', key: 'clients', hint: 'g c' },
@@ -21,8 +23,11 @@ const LINKS = [
 ];
 
 export async function Sidebar({ active, alertCount = 0 }: { active?: string; alertCount?: number }) {
-  const email = await getSessionEmail();
-  if (!email) return null;
+  const ownerId = await getSessionEmail();
+  if (!ownerId) return null;
+  // Display identity, not the owner id — under Supabase those differ and
+  // the owner id is a UUID, which is not a useful thing to show a person.
+  const label = (await getSessionDisplayName()) ?? 'account';
 
   return (
     <div id="sidebar">
@@ -68,7 +73,7 @@ export async function Sidebar({ active, alertCount = 0 }: { active?: string; ale
         </div>
         <form method="POST" action="/api/auth/logout">
           <button type="submit" className="btn-link" style={{ color: 'var(--muted)' }}>
-            Log out ({email})
+            Log out ({label})
           </button>
         </form>
       </div>

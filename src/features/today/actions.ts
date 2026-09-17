@@ -5,6 +5,7 @@ import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
 import { todayIso } from '@/lib/tz/today';
 import type { FocusSession, Task } from './types';
+import { clampDuration, normaliseMinute, MIN_DURATION_MINUTES } from './time';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
@@ -40,7 +41,9 @@ export async function addTask(formData: FormData): Promise<void> {
     dump_date: todayIso(),
     scheduled_date: null,
     scheduled_hour: null,
+    scheduled_minute: null,
     duration_hours: 1,
+    duration_minutes: MIN_DURATION_MINUTES * 2, // 1h default, expressed on the new grid
     done: false,
     created_at: now.toISOString(),
   });
@@ -65,7 +68,9 @@ export async function addProjectTask(projectId: string, formData: FormData): Pro
     dump_date: todayIso(),
     scheduled_date: null,
     scheduled_hour: null,
+    scheduled_minute: null,
     duration_hours: 1,
+    duration_minutes: MIN_DURATION_MINUTES * 2, // 1h default, expressed on the new grid
     done: false,
     created_at: now.toISOString(),
   });
@@ -73,9 +78,22 @@ export async function addProjectTask(projectId: string, formData: FormData): Pro
   revalidateTaskSurfaces(projectId);
 }
 
-export async function scheduleTask(id: string, date: string, hour: number): Promise<void> {
+/**
+ * Place a task on the grid. `minute` is 0 or 30 — the grid is half-hourly
+ * now, so a 9:30 start is a first-class position rather than something
+ * rounded away to 9:00.
+ *
+ * duration_hours is still written alongside duration_minutes so that any
+ * reader that hasn't been migrated (and the old CHECK constraint) still
+ * sees a sane whole-hour value.
+ */
+export async function scheduleTask(id: string, date: string, hour: number, minute = 0): Promise<void> {
   await requireOwner();
-  const updated = await table<Task>('tasks').update(id, { scheduled_date: date, scheduled_hour: hour });
+  const updated = await table<Task>('tasks').update(id, {
+    scheduled_date: date,
+    scheduled_hour: Math.max(0, Math.min(23, Math.round(hour))),
+    scheduled_minute: normaliseMinute(minute),
+  });
   revalidateTaskSurfaces(updated?.project_id ?? null);
 }
 
@@ -110,18 +128,41 @@ export async function moveAllOverdueToToday(todayDate: string): Promise<void> {
   }
 }
 
-/** Drag-resize on the timebox calls this with the new span. Clamped to the
- * visible 8am-9pm window (14 rows) so a block can't resize itself off-grid. */
-export async function resizeTask(id: string, durationHours: number): Promise<void> {
+/**
+ * Drag-resize on the timebox calls this with the new span in MINUTES.
+ *
+ * Snapped to 30-minute steps and clamped to 30 minutes .. 8 hours. Both
+ * columns are written: duration_minutes is the real value, duration_hours
+ * is kept in sync (rounded up, never below 1) purely so older readers and
+ * the original whole-hour CHECK constraint stay happy.
+ */
+export async function resizeTask(id: string, newDurationMinutes: number): Promise<void> {
   await requireOwner();
-  const clamped = Math.max(1, Math.min(8, Math.round(durationHours)));
-  const updated = await table<Task>('tasks').update(id, { duration_hours: clamped });
+  const minutes = clampDuration(newDurationMinutes);
+  const updated = await table<Task>('tasks').update(id, {
+    duration_minutes: minutes,
+    duration_hours: Math.max(1, Math.min(8, Math.ceil(minutes / 60))),
+  });
+  revalidateTaskSurfaces(updated?.project_id ?? null);
+}
+
+/** Move an already-placed block to a new start time without changing its
+ *  length — dragging the body of a block rather than its bottom edge. */
+export async function moveTask(id: string, date: string, hour: number, minute = 0): Promise<void> {
+  await requireOwner();
+  const updated = await table<Task>('tasks').update(id, {
+    scheduled_date: date,
+    scheduled_hour: Math.max(0, Math.min(23, Math.round(hour))),
+    scheduled_minute: normaliseMinute(minute),
+  });
   revalidateTaskSurfaces(updated?.project_id ?? null);
 }
 
 export async function unscheduleTask(id: string): Promise<void> {
   await requireOwner();
-  const updated = await table<Task>('tasks').update(id, { scheduled_date: null, scheduled_hour: null });
+  const updated = await table<Task>('tasks').update(id, {
+    scheduled_date: null, scheduled_hour: null, scheduled_minute: null,
+  });
   revalidateTaskSurfaces(updated?.project_id ?? null);
 }
 

@@ -33,6 +33,7 @@ import { getClients } from '@/features/clients/queries';
 import { TYPE_COLOR, TYPE_LABEL, projectTypes, hasType } from '@/lib/project-colors';
 import { getTasksForProject } from '@/features/today/queries';
 import { addProjectTask, toggleTaskDone } from '@/features/today/actions';
+import { fmtRange } from '@/features/today/time';
 
 const inr = (n: number) => '₹' + n.toLocaleString('en-IN');
 const TAB_LABEL: Record<string, string> = {
@@ -161,7 +162,7 @@ export default async function ProjectDetailPage({
                     </span>
                   </span>
                   <span className="text-muted" style={{ fontSize: 11.5, flexShrink: 0 }}>
-                    {t.scheduled_date ? `${t.scheduled_date} · ${t.scheduled_hour}:00 (${t.duration_hours}h)` : 'Unscheduled'}
+                    {t.scheduled_date ? `${t.scheduled_date} · ${fmtRange(t)}` : 'Unscheduled'}
                   </span>
                 </div>
               ))}

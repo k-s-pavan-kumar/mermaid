@@ -1,4 +1,4 @@
-import { getSessionEmail } from '@/lib/auth/session';
+import { getSessionEmail, getSessionDisplayName } from '@/lib/auth/session';
 
 const LINKS = [
   { href: '/today', label: 'Today' },
@@ -8,8 +8,9 @@ const LINKS = [
 ];
 
 export async function AppNav() {
-  const email = await getSessionEmail();
-  if (!email) return null;
+  const ownerId = await getSessionEmail();
+  if (!ownerId) return null;
+  const label = (await getSessionDisplayName()) ?? 'account';
 
   return (
     <div
@@ -55,7 +56,7 @@ export async function AppNav() {
             cursor: 'pointer',
           }}
         >
-          Log out ({email})
+          Log out ({label})
         </button>
       </form>
     </div>

@@ -35,7 +35,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   ]);
 
   return (
-    <Shell active="today" title="Today" crumb="Workspace">
+    <Shell active="today" title="Today" crumb="Workspace" view="today">
       <TodayClient
         date={activeDate}
         realToday={realToday}

@@ -74,6 +74,41 @@ export async function moveClock(id: string, direction: -1 | 1): Promise<void> {
   await save(owner, { clocks: next });
 }
 
+/**
+ * Save weekly / monthly / yearly targets.
+ *
+ * Every numeric field floors at 0 and 0 means "not tracking this", which is
+ * what lets the Dashboard hide a ring instead of showing a meaningless
+ * 0-of-0 progress bar.
+ */
+export async function updateTargets(formData: FormData): Promise<void> {
+  const owner = await requireOwner();
+  const current = await getSettings(owner);
+
+  const num = (k: string, max = 1_000_000_000): number => {
+    const v = Number(formData.get(k) ?? 0);
+    if (!Number.isFinite(v) || v < 0) return 0;
+    return Math.min(max, v);
+  };
+
+  await save(owner, {
+    targets: {
+      ...current.targets,
+      weekly_focus_hours: num('weekly_focus_hours', 7 * 24),
+      weekly_tasks: num('weekly_tasks', 1000),
+      weekly_active_days: Math.min(7, Math.round(num('weekly_active_days', 7))),
+      monthly_focus_hours: num('monthly_focus_hours', 31 * 24),
+      monthly_tasks: num('monthly_tasks', 5000),
+      monthly_revenue: num('monthly_revenue'),
+      yearly_revenue: num('yearly_revenue'),
+      currency: String(formData.get('currency') ?? '').trim().toUpperCase().slice(0, 4) || 'INR',
+      fiscal_year_start_month: Math.min(12, Math.max(1, Math.round(num('fiscal_year_start_month', 12)) || 1)),
+    },
+  });
+
+  revalidatePath('/dashboard');
+}
+
 export async function updateBusiness(formData: FormData): Promise<void> {
   const owner = await requireOwner();
   const current = await getSettings(owner);

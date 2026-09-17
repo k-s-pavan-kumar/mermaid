@@ -135,6 +135,38 @@ export async function getSessionEmail(): Promise<string | null> {
   return token ? verify(token) : null;
 }
 
+/**
+ * What to *show* the person — never what to store or query by.
+ *
+ * getSessionEmail() returns an opaque owner id, which under
+ * DATA_PROVIDER=supabase is the Auth user's UUID. That's correct for
+ * owner_id comparisons and RLS, but rendering it in "Log out (…)" showed a
+ * raw UUID in the sidebar. This returns the human-readable identity for
+ * that same session: the Auth user's email under Supabase, the login email
+ * under local. Display only — never pass this to a query.
+ */
+export async function getSessionDisplayName(): Promise<string | null> {
+  if (USE_SUPABASE_AUTH) {
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) return null;
+    // email can legitimately be absent (phone/OAuth-only identities), so
+    // fall back through the profile before giving up on a UUID.
+    return (
+      user.email ??
+      (typeof user.user_metadata?.email === 'string' ? user.user_metadata.email : null) ??
+      (typeof user.user_metadata?.full_name === 'string' ? user.user_metadata.full_name : null) ??
+      user.phone ??
+      null
+    );
+  }
+
+  // Local mode: the owner id already *is* the email.
+  return getSessionEmail();
+}
+
 export async function destroySession(): Promise<void> {
   if (USE_SUPABASE_AUTH) {
     const supabase = await createClient();

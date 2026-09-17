@@ -5,11 +5,19 @@ import { useEffect, useRef, useState, useTransition } from 'react';
 import type { Task } from '@/features/today/types';
 import type { Meeting } from '@/features/meetings/types';
 import { TYPE_COLOR } from '@/lib/project-colors';
+import { SLOT_MINUTES, startMinutes, durationMinutes, fmtClock } from '@/features/today/time';
 
 // Full 24 hours, same as Today — an 8am–9pm window silently hid anything
 // scheduled early or late.
+//
+// The week view keeps whole-hour CELLS (seven columns of half-hour rows is
+// unreadably dense), but blocks inside a cell are offset and sized by their
+// real minute values, so a 9:30 start sits visibly below a 9:00 one and a
+// 90-minute block is visibly longer than a 60-minute one. Dropping onto the
+// top or bottom half of a cell chooses :00 or :30.
 const HOURS = Array.from({ length: 24 }, (_, i) => i);
 const ROW_HEIGHT = 52;
+const PX_PER_MINUTE = ROW_HEIGHT / 60;
 const isNight = (h: number) => h < 6 || h >= 22;
 
 interface ProjectRef { id: string; name: string; type: string }
@@ -18,6 +26,12 @@ function fmtHour(h: number): string {
   const period = h >= 12 ? 'PM' : 'AM';
   const hr = h % 12 === 0 ? 12 : h % 12;
   return `${String(hr).padStart(2, '0')}:00 ${period}`;
+}
+
+/** Which half of a cell the pointer is in — top → :00, bottom → :30. */
+function minuteFromDrop(e: React.DragEvent<HTMLDivElement>): 0 | 30 {
+  const box = e.currentTarget.getBoundingClientRect();
+  return e.clientY - box.top > box.height / 2 ? 30 : 0;
 }
 
 function shiftIso(iso: string, days: number): string {
@@ -64,7 +78,7 @@ export function WeekGrid({
   meetings: Meeting[];
   unscheduled: Task[];
   projects: ProjectRef[];
-  scheduleTask: (id: string, date: string, hour: number) => Promise<void>;
+  scheduleTask: (id: string, date: string, hour: number, minute?: number) => Promise<void>;
   toggleTaskDone: (id: string, done: boolean) => Promise<void>;
 }) {
   const router = useRouter();
@@ -78,8 +92,8 @@ export function WeekGrid({
     if (!el) return;
     const earliest = tasks
       .filter((t) => t.scheduled_hour !== null)
-      .reduce<number | null>((min, t) => (min === null ? t.scheduled_hour! : Math.min(min, t.scheduled_hour!)), null);
-    el.scrollTop = Math.max(0, ((earliest ?? 7) - 1) * ROW_HEIGHT);
+      .reduce<number | null>((min, t) => (min === null ? startMinutes(t) : Math.min(min, startMinutes(t))), null);
+    el.scrollTop = Math.max(0, ((earliest ?? 7 * 60) - 60) * PX_PER_MINUTE);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [weekStart]);
 
@@ -130,6 +144,8 @@ export function WeekGrid({
                 {days.map((d) => {
                   const cellKey = `${d.iso}:${h}`;
                   const cellTasks = tasks.filter((t) => t.scheduled_date === d.iso && t.scheduled_hour === h);
+                  // (a block starting at :30 still belongs to its own hour's cell,
+                  //  and is nudged down inside it by marginTop below)
                   const cellMeetings = meetings.filter(
                     (m) => m.starts_at.slice(0, 10) === d.iso && new Date(m.starts_at).getHours() === h
                   );
@@ -142,29 +158,34 @@ export function WeekGrid({
                       onDragLeave={() => setDragCell((c) => (c === cellKey ? null : c))}
                       onDrop={(e) => {
                         e.preventDefault();
+                        const minute = minuteFromDrop(e);
                         setDragCell(null);
                         const id = e.dataTransfer.getData('text/plain');
-                        if (id) run(() => scheduleTask(id, d.iso, h));
+                        if (id) run(() => scheduleTask(id, d.iso, h, minute));
                       }}
                     >
                       {cellTasks.map((t) => {
                         const project = projectById.get(t.project_id ?? '');
                         const accent = project ? TYPE_COLOR[project.type as keyof typeof TYPE_COLOR] : 'var(--pine)';
+                        const start = startMinutes(t);
+                        const mins = durationMinutes(t);
+                        const offsetInCell = start % 60; // 0 or 30
                         return (
                           <button
                             key={t.id}
                             type="button"
-                            className={`week-event${t.done ? ' done' : ''}`}
+                            className={`week-event${t.done ? ' done' : ''}${mins <= SLOT_MINUTES ? ' short' : ''}`}
                             style={{
                               borderLeftColor: accent,
-                              height: (t.duration_hours ?? 1) * ROW_HEIGHT - 8,
+                              marginTop: offsetInCell * PX_PER_MINUTE,
+                              height: Math.max(18, mins * PX_PER_MINUTE - 6),
                             }}
                             onClick={() => run(() => toggleTaskDone(t.id, !t.done))}
-                            title={t.done ? 'Mark not done' : 'Mark done'}
+                            title={`${t.title} · ${fmtClock(start)}–${fmtClock(start + mins)} · ${t.done ? 'done' : 'not done'}`}
                           >
                             <span className="dot" style={{ background: accent }} />
                             <span className="ttl">{t.title}</span>
-                            {project && <span className="sub">{project.name}</span>}
+                            <span className="sub">{fmtClock(start)}{project ? ` · ${project.name}` : ''}</span>
                           </button>
                         );
                       })}

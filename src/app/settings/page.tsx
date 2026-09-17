@@ -1,11 +1,16 @@
 import { redirect } from 'next/navigation';
 import { getSessionEmail } from '@/lib/auth/session';
 import { getSettings } from '@/features/settings/queries';
-import { addClock, removeClock, setHomeClock, moveClock, updateBusiness } from '@/features/settings/actions';
+import { addClock, removeClock, setHomeClock, moveClock, updateBusiness, updateTargets } from '@/features/settings/actions';
 import { Shell } from '@/components/Shell';
 import { SubmitButton } from '@/components/SubmitButton';
 import { ActionButton } from '@/components/ActionButton';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
+
+const MONTHS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
 
 export default async function SettingsPage() {
   const email = await getSessionEmail();
@@ -50,6 +55,95 @@ export default async function SettingsPage() {
         <input name="label" placeholder="Label — e.g. Dubai, or a client's name" required />
         <TimezoneSelect name="timezone" defaultValue="Asia/Dubai" />
         <SubmitButton className="btn-inline" pendingLabel="Adding…">Add clock</SubmitButton>
+      </form>
+
+      <div className="section-title" id="targets"><h3>Targets &amp; goals</h3></div>
+      <p className="text-muted text-sm" style={{ marginTop: -4 }}>
+        What a good week, a good month and a good year look like in your numbers.
+        These drive the rings and pace notches on the <a href="/dashboard">Dashboard</a>.
+        Leave anything at <strong>0</strong> to stop tracking it — that target simply
+        disappears from the Dashboard rather than showing an empty bar.
+      </p>
+
+      <form action={updateTargets} className="card form-grid" style={{ maxWidth: 620 }}>
+        <div className="field-group-label">Weekly</div>
+        <div className="grid-2-eq">
+          <div>
+            <label className="field-label" htmlFor="weekly_focus_hours">Focused hours</label>
+            <input id="weekly_focus_hours" name="weekly_focus_hours" type="number" min={0} max={168} step="0.5"
+              defaultValue={settings.targets.weekly_focus_hours} style={{ width: '100%' }} />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="weekly_tasks">Tasks completed</label>
+            <input id="weekly_tasks" name="weekly_tasks" type="number" min={0} step="1"
+              defaultValue={settings.targets.weekly_tasks} style={{ width: '100%' }} />
+          </div>
+        </div>
+        <div>
+          <label className="field-label" htmlFor="weekly_active_days">Days something moved (0–7)</label>
+          <input id="weekly_active_days" name="weekly_active_days" type="number" min={0} max={7} step="1"
+            defaultValue={settings.targets.weekly_active_days} style={{ width: '100%' }} />
+          <p className="text-muted" style={{ fontSize: 11.5, margin: '6px 0 0' }}>
+            A day counts if any task was finished, any focus block ran, or you had a
+            meeting — the same forgiving rule the streak uses. Six is usually a kinder
+            target than seven.
+          </p>
+        </div>
+
+        <div className="field-group-label">Monthly</div>
+        <div className="grid-2-eq">
+          <div>
+            <label className="field-label" htmlFor="monthly_focus_hours">Focused hours</label>
+            <input id="monthly_focus_hours" name="monthly_focus_hours" type="number" min={0} max={744} step="1"
+              defaultValue={settings.targets.monthly_focus_hours} style={{ width: '100%' }} />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="monthly_tasks">Tasks completed</label>
+            <input id="monthly_tasks" name="monthly_tasks" type="number" min={0} step="1"
+              defaultValue={settings.targets.monthly_tasks} style={{ width: '100%' }} />
+          </div>
+        </div>
+        <div>
+          <label className="field-label" htmlFor="monthly_revenue">Revenue received in a month</label>
+          <input id="monthly_revenue" name="monthly_revenue" type="number" min={0} step="1"
+            defaultValue={settings.targets.monthly_revenue} style={{ width: '100%' }} />
+        </div>
+
+        <div className="field-group-label">The year</div>
+        <div className="grid-2-eq">
+          <div>
+            <label className="field-label" htmlFor="yearly_revenue">Financial goal for the year</label>
+            <input id="yearly_revenue" name="yearly_revenue" type="number" min={0} step="1"
+              defaultValue={settings.targets.yearly_revenue} style={{ width: '100%' }} />
+          </div>
+          <div>
+            <label className="field-label" htmlFor="currency">Currency</label>
+            <select id="currency" name="currency" defaultValue={settings.targets.currency} style={{ width: '100%' }}>
+              {['INR', 'USD', 'EUR', 'GBP', 'AUD', 'CAD', 'SGD', 'AED'].map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="field-label" htmlFor="fiscal_year_start_month">Financial year starts in</label>
+          <select id="fiscal_year_start_month" name="fiscal_year_start_month"
+            defaultValue={settings.targets.fiscal_year_start_month} style={{ width: '100%' }}>
+            {MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+          </select>
+          <p className="text-muted" style={{ fontSize: 11.5, margin: '6px 0 0' }}>
+            India&apos;s runs April to March. Getting this right matters: it decides what
+            &ldquo;this year so far&rdquo; actually covers, and therefore whether you read as
+            ahead of or behind pace.
+          </p>
+        </div>
+
+        <p className="text-muted" style={{ fontSize: 11.5, margin: 0 }}>
+          Only money that has actually been <strong>paid</strong> counts towards a revenue
+          target. Invoiced-but-unpaid is shown beside it on the Dashboard, never folded in.
+        </p>
+
+        <SubmitButton className="btn" pendingLabel="Saving…" style={{ width: 'fit-content' }}>Save targets</SubmitButton>
       </form>
 
       <div className="section-title"><h3>Billing profile</h3></div>

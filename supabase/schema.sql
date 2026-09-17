@@ -12,6 +12,19 @@
 --   alter table projects drop constraint projects_type_check;
 --   alter table projects add constraint projects_type_check check (type in
 --     ('client','internal','opensource','mobile','game','web','content','assess','bounty'));
+--
+--   -- Half-hour timebox grid (both columns are additive; existing rows keep
+--   -- their exact current placement because null minute == :00 and null
+--   -- duration_minutes falls back to duration_hours * 60):
+--   alter table tasks add column scheduled_minute int
+--     check (scheduled_minute in (0, 30));
+--   alter table tasks add column duration_minutes int
+--     check (duration_minutes between 30 and 480 and duration_minutes % 30 = 0);
+--   update tasks set duration_minutes = duration_hours * 60
+--     where duration_minutes is null;
+--
+--   -- Weekly / monthly / yearly targets shown on the Dashboard:
+--   alter table settings add column targets jsonb not null default '{}'::jsonb;
 
 create extension if not exists "uuid-ossp";
 
@@ -169,7 +182,16 @@ create table tasks (
   dump_date        date not null default current_date,
   scheduled_date   date,
   scheduled_hour   int check (scheduled_hour between 0 and 23),
+  -- Half-hour grid. Null means :00, which is exactly how every row written
+  -- before half-hour slots existed already behaves, so there is nothing to
+  -- backfill.
+  scheduled_minute int check (scheduled_minute in (0, 30)),
+  -- Legacy whole-hour length. Still written (rounded up) so any reader that
+  -- predates duration_minutes keeps working.
   duration_hours   int not null default 1 check (duration_hours between 1 and 8),
+  -- Real length in minutes, in 30-minute steps. Takes precedence over
+  -- duration_hours wherever both are present.
+  duration_minutes int check (duration_minutes between 30 and 480 and duration_minutes % 30 = 0),
   done             boolean not null default false,
   -- The date this task was picked as that day's ONE thing. A date rather
   -- than a boolean so yesterday's choice doesn't silently become today's.
@@ -209,6 +231,9 @@ create table settings (
   owner_id   uuid not null references auth.users(id) default auth.uid() unique,
   clocks     jsonb not null default '[]'::jsonb,   -- customisable clock widgets
   business   jsonb not null default '{}'::jsonb,   -- invoice letterhead + payment details
+  -- Weekly / monthly / yearly goals powering the Dashboard. jsonb for the
+  -- same reason as the rest of this row: adding a target is never a migration.
+  targets    jsonb not null default '{}'::jsonb,
   code_root  text not null default '',             -- the only folder scaffolding may write to
   updated_at timestamptz not null default now()
 );

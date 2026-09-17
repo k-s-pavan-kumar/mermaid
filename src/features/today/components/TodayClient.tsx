@@ -9,21 +9,28 @@ import { MonthCalendar } from './MonthCalendar';
 import { ActionButton } from '@/components/ActionButton';
 import { SubmitButton } from '@/components/SubmitButton';
 import { TYPE_COLOR } from '@/lib/project-colors';
+import {
+  SLOT_MINUTES, SLOTS_PER_DAY, MIN_DURATION_MINUTES, MAX_DURATION_MINUTES,
+  startMinutes, durationMinutes, slotToHourMinute, fmtClock, fmtDuration,
+} from '../time';
 
-// A full 24-hour day. The old 8am–9pm window quietly refused to hold early
-// mornings and late-night work — which is exactly when a lot of this work
-// actually happens — so anything scheduled outside it simply vanished from
-// the grid. Night hours are dimmed rather than hidden.
-const HOURS = Array.from({ length: 24 }, (_, i) => i);
-const ROW_HEIGHT = 46;
+// A full 24-hour day on a HALF-HOUR grid. The old 8am–9pm window quietly
+// refused to hold early mornings and late-night work — which is exactly when
+// a lot of this work actually happens — so anything scheduled outside it
+// simply vanished. Night hours are dimmed rather than hidden.
+//
+// The grid is 48 half-hour slots. Each slot is its own drop target, so a
+// task can land on 9:30 as easily as on 9:00, and resizing moves in 30-minute
+// steps instead of whole hours.
+const SLOTS = Array.from({ length: SLOTS_PER_DAY }, (_, i) => i);
+const SLOT_HEIGHT = 23;           // half of the old 46px hour row — an hour still reads as 46px
+const ROW_HEIGHT = SLOT_HEIGHT * 2;
 const DEFAULT_SCROLL_HOUR = 7;
-const isNight = (h: number) => h < 6 || h >= 22;
-
-function fmtHour(h: number): string {
-  const period = h >= 12 ? 'PM' : 'AM';
-  const hr = h % 12 === 0 ? 12 : h % 12;
-  return `${hr} ${period}`;
-}
+const isNightSlot = (slot: number) => {
+  const h = Math.floor(slot / 2);
+  return h < 6 || h >= 22;
+};
+const pxToMinutes = (px: number) => (px / SLOT_HEIGHT) * SLOT_MINUTES;
 /**
  * Day arithmetic in UTC on purpose.
  *
@@ -64,8 +71,8 @@ interface Props {
   focusMinutesToday: number;
   projects: ProjectRef[];
   addTask: (formData: FormData) => Promise<void>;
-  scheduleTask: (id: string, date: string, hour: number) => Promise<void>;
-  resizeTask: (id: string, durationHours: number) => Promise<void>;
+  scheduleTask: (id: string, date: string, hour: number, minute?: number) => Promise<void>;
+  resizeTask: (id: string, durationMinutes: number) => Promise<void>;
   unscheduleTask: (id: string) => Promise<void>;
   toggleTaskDone: (id: string, done: boolean) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
@@ -97,7 +104,7 @@ export function TodayClient({
   // Opens on its own when something is already overdue — that's precisely
   // the case where a day looks empty but isn't.
   const [showCalendar, setShowCalendar] = useState(overdue.length > 0);
-  const [dragOverHour, setDragOverHour] = useState<number | null>(null);
+  const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
   const [liveDuration, setLiveDuration] = useState<Record<string, number>>({});
   const resizingRef = useRef<{ id: string; startY: number; startDuration: number } | null>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -110,10 +117,11 @@ export function TodayClient({
     if (!el) return;
     const firstBlock = tasks
       .filter((t) => t.scheduled_hour !== null)
-      .reduce<number | null>((min, t) => (min === null ? t.scheduled_hour! : Math.min(min, t.scheduled_hour!)), null);
-    const nowHour = date === realToday ? new Date().getHours() : null;
-    const target = firstBlock ?? nowHour ?? DEFAULT_SCROLL_HOUR;
-    el.scrollTop = Math.max(0, (target - 1) * ROW_HEIGHT);
+      .reduce<number | null>((min, t) => (min === null ? startMinutes(t) : Math.min(min, startMinutes(t))), null);
+    const nowMinutes = date === realToday ? new Date().getHours() * 60 + new Date().getMinutes() : null;
+    const target = firstBlock ?? nowMinutes ?? DEFAULT_SCROLL_HOUR * 60;
+    // Show half an hour of lead-in above the first block.
+    el.scrollTop = Math.max(0, ((target - 30) / SLOT_MINUTES) * SLOT_HEIGHT);
     // Only on a date change — re-running on every task edit would yank the
     // scroll position out from under you mid-drag.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -134,8 +142,13 @@ export function TodayClient({
     function onMove(e: MouseEvent) {
       const r = resizingRef.current;
       if (!r) return;
-      const deltaRows = Math.round((e.clientY - r.startY) / ROW_HEIGHT);
-      const next = Math.max(1, Math.min(8, r.startDuration + deltaRows));
+      // Snap to the nearest half hour rather than the nearest hour — this is
+      // the whole point of the finer grid.
+      const deltaSlots = Math.round(pxToMinutes(e.clientY - r.startY) / SLOT_MINUTES);
+      const next = Math.max(
+        MIN_DURATION_MINUTES,
+        Math.min(MAX_DURATION_MINUTES, r.startDuration + deltaSlots * SLOT_MINUTES)
+      );
       setLiveDuration((d) => ({ ...d, [r.id]: next }));
     }
     function onUp() {
@@ -144,7 +157,21 @@ export function TodayClient({
       resizingRef.current = null;
       const final = liveDuration[r.id];
       if (final !== undefined && final !== r.startDuration) {
-        withRefresh(() => resizeTask(r.id, final));
+        withRefresh(async () => {
+          await resizeTask(r.id, final);
+          // Drop the optimistic override once the server value is the
+          // source of truth again; leaving it in place would pin the block
+          // to a stale height if the save were ever rejected.
+          setLiveDuration((d) => {
+            const { [r.id]: _dropped, ...rest } = d;
+            return rest;
+          });
+        });
+      } else {
+        setLiveDuration((d) => {
+          const { [r.id]: _dropped, ...rest } = d;
+          return rest;
+        });
       }
       document.body.style.userSelect = '';
     }
@@ -286,7 +313,7 @@ export function TodayClient({
           ))}
 
           <div className="text-muted" style={{ fontSize: 11, marginTop: 10 }}>
-            Drag a card onto the calendar to schedule it · drag a block's bottom edge to resize →
+            Drag a card onto any half-hour slot · drag a block's bottom edge to resize in 30-min steps →
           </div>
         </div>
 
@@ -380,25 +407,31 @@ export function TodayClient({
 
         <div className="timebox-scroll" ref={scrollRef}>
         <div className="card timebox-cal" style={{ padding: 0 }} ref={gridRef}>
-          {/* Background hour grid — also the drop targets for scheduling. */}
-          {HOURS.map((h) => (
-            <div
-              key={h}
-              className={`timebox-row${isNight(h) ? ' night' : ''}`}
-              style={dragOverHour === h ? { background: 'var(--pine-soft)' } : undefined}
-              onDragOver={(e) => { e.preventDefault(); setDragOverHour(h); }}
-              onDragLeave={() => setDragOverHour((c) => (c === h ? null : c))}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOverHour(null);
-                const id = e.dataTransfer.getData('text/plain');
-                if (id) withRefresh(() => scheduleTask(id, date, h));
-              }}
-            >
-              <div className="hour-label">{fmtHour(h)}</div>
-              <div />
-            </div>
-          ))}
+          {/* Background half-hour grid — also the drop targets. Every slot is
+              droppable, so 9:30 is as easy to hit as 9:00; only the top slot
+              of each hour carries the gutter label, and the :30 slot's
+              divider is drawn lighter so the hour is still the unit you read. */}
+          {SLOTS.map((slot) => {
+            const { hour, minute } = slotToHourMinute(slot);
+            const isHalf = minute === 30;
+            return (
+              <div
+                key={slot}
+                className={`timebox-slot${isHalf ? ' half' : ''}${isNightSlot(slot) ? ' night' : ''}${dragOverSlot === slot ? ' over' : ''}`}
+                onDragOver={(e) => { e.preventDefault(); setDragOverSlot(slot); }}
+                onDragLeave={() => setDragOverSlot((c) => (c === slot ? null : c))}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverSlot(null);
+                  const id = e.dataTransfer.getData('text/plain');
+                  if (id) withRefresh(() => scheduleTask(id, date, hour, minute));
+                }}
+              >
+                <div className="hour-label">{isHalf ? '' : fmtClock(hour * 60)}</div>
+                <div />
+              </div>
+            );
+          })}
 
           {/* Foreground overlay — variable-height task blocks positioned by
               time, independent of the row grid underneath, so a block can
@@ -414,32 +447,36 @@ export function TodayClient({
               </div>
             )}
             {scheduled.map((t) => {
-              const hour = t.scheduled_hour!;
-              const rowIndex = HOURS.indexOf(hour);
-              if (rowIndex === -1) return null;
-              const duration = liveDuration[t.id] ?? t.duration_hours ?? 1;
-              const top = rowIndex * ROW_HEIGHT;
-              const height = duration * ROW_HEIGHT - 4;
+              const start = startMinutes(t);
+              const duration = liveDuration[t.id] ?? durationMinutes(t);
+              const top = (start / SLOT_MINUTES) * SLOT_HEIGHT;
+              const height = Math.max(SLOT_HEIGHT - 2, (duration / SLOT_MINUTES) * SLOT_HEIGHT - 3);
               const project = projectById.get(t.project_id ?? '');
               const accent = project ? TYPE_COLOR[project.type as keyof typeof TYPE_COLOR] : 'var(--pine)';
+              // A 30-minute block has no room for a second line, so it
+              // collapses to title + time on one row instead of clipping.
+              const compact = duration <= SLOT_MINUTES;
+              const rangeLabel = `${fmtClock(start)} – ${fmtClock(start + duration)}`;
 
               return (
                 <div
                   key={t.id}
-                  className="tb-block-abs"
+                  className={`tb-block-abs${compact ? ' compact' : ''}${resizingRef.current?.id === t.id ? ' resizing' : ''}`}
                   style={{
                     top, height,
                     background: 'var(--pine-soft)',
                     borderLeft: `3px solid ${accent}`,
                     opacity: t.done ? 0.55 : 1,
                   }}
+                  title={`${t.title} · ${rangeLabel}`}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, padding: '6px 9px', height: '100%', overflow: 'hidden' }}>
+                  <div className="tb-block-inner">
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, color: 'var(--pine)', textDecoration: t.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <div className="tb-title" style={{ textDecoration: t.done ? 'line-through' : 'none' }}>
                         {t.title}
                       </div>
-                      <ProjectBadge project={project} />
+                      {compact ? null : <ProjectBadge project={project} />}
+                      <div className="tb-time">{rangeLabel} · {fmtDuration(duration)}</div>
                     </div>
                     <span style={{ display: 'flex', gap: 7, flexShrink: 0 }}>
                       <ActionButton action={() => toggleTaskDone(t.id, !t.done)} className="btn-link" style={{ color: 'var(--pine)' }} title="Toggle done" aria-label="Toggle done" pendingLabel="·">✓</ActionButton>
@@ -448,9 +485,14 @@ export function TodayClient({
                   </div>
                   <div
                     className="resize-handle"
-                    onMouseDown={(e) => startResize(t.id, t.duration_hours ?? 1, e)}
-                    title="Drag to resize"
+                    onMouseDown={(e) => startResize(t.id, durationMinutes(t), e)}
+                    title="Drag to resize — snaps to 30 minutes"
                   />
+                  {/* Live read-out while dragging the bottom edge, so you can
+                      see "1h 30m" land rather than guessing from pixels. */}
+                  {liveDuration[t.id] !== undefined && resizingRef.current?.id === t.id && (
+                    <span className="tb-resize-pill">{fmtDuration(duration)}</span>
+                  )}
                 </div>
               );
             })}

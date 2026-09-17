@@ -11,6 +11,7 @@
     "lint": "next lint",
     "db:seed:local": "tsx src/lib/data/seed.ts",
     "verify:logic": "tsx scripts/verify-logic.ts",
+    "verify:dashboard": "tsx scripts/verify-dashboard.ts",
     "verify:notes-integrations": "tsx scripts/verify-notes-integrations.ts",
     "verify:notifications": "tsx scripts/verify-notifications.ts",
     "verify:alert-state": "tsx scripts/verify-alert-state.ts",

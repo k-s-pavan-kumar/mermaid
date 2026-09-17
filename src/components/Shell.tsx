@@ -9,17 +9,20 @@ import { getProjects } from '@/features/projects/queries';
 import { getClients } from '@/features/clients/queries';
 import { getSettings } from '@/features/settings/queries';
 import { AssistantPanel } from './AssistantPanel';
+import { ViewTabs, type ViewKey } from './ViewTabs';
 
 // The OS chrome: sidebar + topbar (with notifications) + live world-clock
 // strip + scrolling content, plus the global keyboard layer. Every
 // authenticated page renders inside this.
 export async function Shell({
-  active, title, crumb, action, children,
+  active, title, crumb, action, view, children,
 }: {
   active?: string;
   title: string;
   crumb?: string;
   action?: ReactNode;
+  /** Renders the Today / Dashboard switch in the topbar when set. */
+  view?: ViewKey;
   children: ReactNode;
 }) {
   const email = await getSessionEmail();
@@ -31,6 +34,7 @@ export async function Shell({
   // so ⌘K reaches real records, not just nav.
   const items: PaletteItem[] = [
     { label: 'Today', href: '/today', group: 'Page', hint: 'g t' },
+    { label: 'Dashboard — targets, time split & financial goal', href: '/dashboard', group: 'Page', hint: 'g d' },
     { label: 'Projects', href: '/projects', group: 'Page', hint: 'g p' },
     { label: 'Clients', href: '/clients', group: 'Page', hint: 'g c' },
     { label: 'Calendar', href: '/calendar', group: 'Page', hint: 'g a' },
@@ -47,9 +51,12 @@ export async function Shell({
       <Sidebar active={active} alertCount={alerts.length} />
       <div className="main">
         <div className="topbar">
-          <div>
-            {crumb && <div className="crumb">{crumb}</div>}
-            <h1>{title}</h1>
+          <div className="topbar-lead">
+            <div>
+              {crumb && <div className="crumb">{crumb}</div>}
+              <h1>{title}</h1>
+            </div>
+            {view && <ViewTabs active={view} />}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             {action}
