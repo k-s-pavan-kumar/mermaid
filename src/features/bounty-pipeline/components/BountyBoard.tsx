@@ -26,12 +26,65 @@ const COLUMNS: { key: BountyCase['status']; label: string }[] = [
   { key: 'paid', label: 'Paid' },
 ];
 
+function LogSubmissionModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal">
+        <div className="modal-head"><h2>Log a submission</h2><button type="button" className="modal-close" onClick={onClose}>✕</button></div>
+        <p className="text-muted text-sm" style={{ margin: '0 0 16px' }}>Starts in &ldquo;Submitted&rdquo; — move it along as the program responds.</p>
+        <form action={async (fd) => { await logSubmission(fd); onClose(); }}>
+          <div style={{ marginBottom: 12 }}>
+            <label className="field-label" htmlFor="title">Vulnerability title</label>
+            <input id="title" name="title" required placeholder="e.g. IDOR on export endpoint" style={{ width: '100%' }} />
+          </div>
+          <div className="grid-2-eq">
+            <div>
+              <label className="field-label" htmlFor="program_name">Program</label>
+              <input id="program_name" name="program_name" required placeholder="e.g. HackerOne — Acme Corp" style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="severity">Severity</label>
+              <select id="severity" name="severity" defaultValue="high" style={{ width: '100%' }}>
+                {SEVERITY_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label className="field-label" htmlFor="estimated_payout">Estimated payout</label>
+            <input id="estimated_payout" name="estimated_payout" type="number" min={0} step="1" placeholder="10000" style={{ width: '100%' }} />
+          </div>
+          <div className="modal-foot">
+            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn">Add to Submitted</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export function BountyBoard({ cases }: { cases: BountyCase[] }) {
   const [logOpen, setLogOpen] = useState(false);
   const [acceptId, setAcceptId] = useState<string | null>(null);
   const [payId, setPayId] = useState<string | null>(null);
 
   const closed = cases.filter((c) => c.status === 'rejected' || c.status === 'duplicate');
+
+  if (cases.length === 0) {
+    return (
+      <>
+        <div className="card">
+          <div className="empty">
+            <img src="/mascot/idea.png" alt="" width={96} height={96} />
+            <div className="big">No submissions yet</div>
+            Log your first submission to get started.
+            <div><button type="button" className="btn" onClick={() => setLogOpen(true)}>+ Log a submission</button></div>
+          </div>
+        </div>
+        {logOpen && <LogSubmissionModal onClose={() => setLogOpen(false)} />}
+      </>
+    );
+  }
 
   return (
     <>
@@ -116,40 +169,7 @@ export function BountyBoard({ cases }: { cases: BountyCase[] }) {
         </div>
       )}
 
-      {logOpen && (
-        <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) setLogOpen(false); }}>
-          <div className="modal">
-            <div className="modal-head"><h2>Log a submission</h2><button type="button" className="modal-close" onClick={() => setLogOpen(false)}>✕</button></div>
-            <p className="text-muted text-sm" style={{ margin: '0 0 16px' }}>Starts in &ldquo;Submitted&rdquo; — move it along as the program responds.</p>
-            <form action={async (fd) => { await logSubmission(fd); setLogOpen(false); }}>
-              <div style={{ marginBottom: 12 }}>
-                <label className="field-label" htmlFor="title">Vulnerability title</label>
-                <input id="title" name="title" required placeholder="e.g. IDOR on export endpoint" style={{ width: '100%' }} />
-              </div>
-              <div className="grid-2-eq">
-                <div>
-                  <label className="field-label" htmlFor="program_name">Program</label>
-                  <input id="program_name" name="program_name" required placeholder="e.g. HackerOne — Acme Corp" style={{ width: '100%' }} />
-                </div>
-                <div>
-                  <label className="field-label" htmlFor="severity">Severity</label>
-                  <select id="severity" name="severity" defaultValue="high" style={{ width: '100%' }}>
-                    {SEVERITY_ORDER.map((s) => <option key={s} value={s}>{s}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div style={{ marginTop: 12 }}>
-                <label className="field-label" htmlFor="estimated_payout">Estimated payout</label>
-                <input id="estimated_payout" name="estimated_payout" type="number" min={0} step="1" placeholder="10000" style={{ width: '100%' }} />
-              </div>
-              <div className="modal-foot">
-                <button type="button" className="btn-ghost" onClick={() => setLogOpen(false)}>Cancel</button>
-                <button type="submit" className="btn">Add to Submitted</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {logOpen && <LogSubmissionModal onClose={() => setLogOpen(false)} />}
 
       {acceptId && (
         <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) setAcceptId(null); }}>

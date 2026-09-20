@@ -66,7 +66,11 @@ export function DailyFinanceClient({
                 <button type="button" className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setModalOpen(true)}>+ Add expense</button>
               </div>
               {days.length === 0 ? (
-                <p className="text-muted text-sm" style={{ padding: 18 }}>Nothing logged this month yet.</p>
+                <div className="empty">
+                  <img src="/mascot/idle.png" alt="" width={72} height={72} />
+                  <div className="big">Nothing logged yet</div>
+                  Log an expense to start the ledger for this month.
+                </div>
               ) : days.map((d) => (
                 <div key={d.date} className="df-day-group">
                   <div className="df-day-head">

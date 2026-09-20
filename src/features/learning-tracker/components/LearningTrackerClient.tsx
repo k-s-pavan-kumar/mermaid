@@ -38,6 +38,16 @@ export function LearningTrackerClient({
         </div>
       )}
 
+      {courses.length === 0 ? (
+        <div className="card">
+          <div className="empty">
+            <img src="/mascot/checklist.png" alt="" width={96} height={96} />
+            <div className="big">No courses yet</div>
+            Add one to start tracking lessons.
+            <div><button type="button" className="btn" onClick={() => setAddOpen(true)}>+ Add a course</button></div>
+          </div>
+        </div>
+      ) : (
       <div className="lt-grid">
         {filtered.map((c) => {
           const status = courseStatus(c);
@@ -77,6 +87,7 @@ export function LearningTrackerClient({
 
         <div className="lt-add-card" onClick={() => setAddOpen(true)}>+ Add a course</div>
       </div>
+      )}
 
       {addOpen && (
         <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) setAddOpen(false); }}>

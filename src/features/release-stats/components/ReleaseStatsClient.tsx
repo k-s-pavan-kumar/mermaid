@@ -34,6 +34,16 @@ export function ReleaseStatsClient({ groups }: { groups: { family: string; rows:
         </button>
       </div>
 
+      {groups.length === 0 ? (
+        <div className="card">
+          <div className="empty">
+            <img src="/mascot/star.png" alt="" width={96} height={96} />
+            <div className="big">Nothing tracked yet</div>
+            Add a package to pull its stars and downloads.
+            <div><button type="button" className="btn" onClick={() => setAddOpen(true)}>+ Track a package</button></div>
+          </div>
+        </div>
+      ) : (
       <div className="rs-board">
         {groups.map((g) => {
           const lead = g.rows[0];
@@ -92,6 +102,7 @@ export function ReleaseStatsClient({ groups }: { groups: { family: string; rows:
 
         <div className="bb-add-card" onClick={() => setAddOpen(true)}>+ Track a package</div>
       </div>
+      )}
 
       {addOpen && (
         <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) setAddOpen(false); }}>

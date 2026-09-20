@@ -12,7 +12,7 @@ export interface PaletteItem {
 
 // Global keyboard layer. Two idioms, both familiar:
 //   ⌘K / Ctrl+K  → fuzzy command palette over pages + your real projects/clients
-//   g then t/d/a/p/c/b/n/s → vim-style "go to" jumps
+//   g then t/d/a/p/c/b/n/s/f/u/v/l/r → vim-style "go to" jumps
 //   ?            → shortcut cheatsheet
 // Shortcuts are suppressed while typing in an input so they never eat text.
 export function CommandPalette({ items }: { items: PaletteItem[] }) {
@@ -66,7 +66,10 @@ export function CommandPalette({ items }: { items: PaletteItem[] }) {
 
       if (pendingG.current) {
         pendingG.current = false;
-        const map: Record<string, string> = { t: '/today', d: '/dashboard', a: '/calendar', p: '/projects', c: '/clients', b: '/billing', n: '/notes', s: '/settings' };
+        const map: Record<string, string> = {
+          t: '/today', d: '/dashboard', a: '/calendar', p: '/projects', c: '/clients', b: '/billing', n: '/notes', s: '/settings',
+          f: '/daily-finance', u: '/bounty-pipeline', v: '/reward-vault', l: '/learning-tracker', r: '/release-stats',
+        };
         const dest = map[e.key.toLowerCase()];
         if (dest) { e.preventDefault(); router.push(dest); }
         return;
@@ -123,6 +126,11 @@ export function CommandPalette({ items }: { items: PaletteItem[] }) {
               ['g then b', 'Go to Billing'],
               ['g then n', 'Go to Notes'],
               ['g then s', 'Go to Settings'],
+              ['g then f', 'Go to Daily Finance'],
+              ['g then u', 'Go to Bug Bounty Pipeline'],
+              ['g then v', 'Go to Reward Vault'],
+              ['g then l', 'Go to Learning Tracker'],
+              ['g then r', 'Go to Release Stats'],
               ['⌘J / Ctrl+J', 'Ask Meri'],
               ['?', 'This cheatsheet'],
               ['esc', 'Close'],

@@ -42,6 +42,11 @@ export async function Shell({
     { label: 'Notes & SOPs', href: '/notes', group: 'Page', hint: 'g n' },
     { label: 'Settings', href: '/settings', group: 'Page' },
     { label: 'Notifications', href: '/notifications', group: 'Page' },
+    { label: 'Daily Finance', href: '/daily-finance', group: 'Personal', hint: 'g f' },
+    { label: 'Bug Bounty Pipeline', href: '/bounty-pipeline', group: 'Personal', hint: 'g u' },
+    { label: 'Reward Vault', href: '/reward-vault', group: 'Personal', hint: 'g v' },
+    { label: 'Learning Tracker', href: '/learning-tracker', group: 'Personal', hint: 'g l' },
+    { label: 'Release Stats', href: '/release-stats', group: 'Personal', hint: 'g r' },
     ...projects.map((p) => ({ label: p.name, href: `/projects/${p.id}`, group: 'Project' })),
     ...clients.map((c) => ({ label: c.name, href: `/clients/${c.id}`, group: 'Client' })),
   ];

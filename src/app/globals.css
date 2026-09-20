@@ -908,3 +908,8 @@ img{max-width:100%;height:auto;}
 .el-label{font-size:11px;color:var(--muted);margin-bottom:4px;}
 .el-value{font-family:'Fraunces',serif;font-size:19px;line-height:1.1;}
 .el-sub{font-size:10.5px;color:var(--muted);margin-top:2px;}
+
+/* Extends the existing .empty pattern with an optional action button below
+   the message, for the new pages' empty states (Daily Finance, Bug Bounty
+   Pipeline, Reward Vault, Learning Tracker, Release Stats). */
+.empty .btn{margin-top:12px;}

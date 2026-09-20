@@ -81,6 +81,16 @@ export function RewardVaultClient({
         <div className="rv-rule"><span className="n">4</span><span>Ready-to-buy items <strong>expire</strong> if unpurchased, and re-lock. Dropped projects release their need the same way.</span></div>
       </div>
 
+      {needs.length === 0 ? (
+        <div className="rv-board">
+          <div className="empty">
+            <img src="/mascot/idea.png" alt="" width={96} height={96} />
+            <div className="big">Nothing in the vault yet</div>
+            Link a finished project or course to your first want.
+            <div><button type="button" className="btn" onClick={() => setAddOpen(true)}>+ Add a need</button></div>
+          </div>
+        </div>
+      ) : (
       <div className="rv-board">
         <div className="rv-row head">
           <div>Need</div><div>Price</div><div>Linked source</div><div>Progress</div><div>Status</div><div>Earned / Purchased</div>
@@ -154,6 +164,7 @@ export function RewardVaultClient({
 
         <div className="rv-add-row" onClick={() => setAddOpen(true)}><span className="plus">+</span>Add a need</div>
       </div>
+      )}
 
       <div className={`rv-log-toggle ${logOpen ? 'open' : ''}`} onClick={() => setLogOpen((v) => !v)}>
         <span className="chev">▶</span> View project status log
