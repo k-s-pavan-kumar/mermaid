@@ -3,7 +3,9 @@ import type { Alert, AlertState } from './types';
 import type { Project, BountySubmission } from '@/features/projects/types';
 import type { Invoice } from '@/features/billing/types';
 import type { Task } from '@/features/today/types';
-import { todayIso } from '@/lib/tz/today';
+import { todayIso, shiftIso } from '@/lib/tz/today';
+import { getDaySpend, weekStartOf, revenueIn } from '@/features/dashboard/queries';
+import { getTargetsHistory, pickTargets } from '@/features/settings/queries';
 
 // Notifications are DERIVED from existing data rather than stored. Nothing
 // writes an "alert" row — the rules below read the same tables the rest of
@@ -96,7 +98,7 @@ async function deriveAlerts(ownerId: string): Promise<DerivedAlert[]> {
 
   // 4. Active projects with no movement in a while.
   for (const p of projects) {
-    if (p.status === 'done' || p.status === 'idea' || p.status === 'risk') continue;
+    if (p.status === 'done' || p.status === 'idea' || p.status === 'risk' || p.status === 'dropped') continue;
     const age = Math.abs(daysBetween(p.created_at.slice(0, 10), today));
     if (age >= STALE_DAYS) {
       alerts.push({
@@ -137,6 +139,74 @@ async function deriveAlerts(ownerId: string): Promise<DerivedAlert[]> {
       href: '/today',
       daysOut: null,
     });
+  }
+
+  // 7. Weekly digest — last week's numbers against whatever target applied
+  // that week, once the week is actually over. Keyed by the week's own
+  // start date, so it's a one-time notification per week (dismiss it and
+  // it's gone for good) rather than a recurring nag, and next Monday's
+  // digest is automatically a different key. This is the closest thing to
+  // a scheduled Monday email that a page-load-driven app without a cron
+  // job can offer — it simply appears once the relevant Monday has come
+  // and gone, the next time the workspace is opened.
+  {
+    const thisWeekStart = weekStartOf(todayDate);
+    const lastWeekStart = shiftIso(thisWeekStart, -7);
+    const lastWeekEnd = shiftIso(lastWeekStart, 6);
+
+    const [lastWeekDays, history] = await Promise.all([
+      getDaySpend(ownerId, lastWeekStart, lastWeekEnd),
+      getTargetsHistory(ownerId),
+    ]);
+    const lastWeekTargets = pickTargets(history, lastWeekStart);
+    const focusMinutes = lastWeekDays.reduce((n, d) => n + d.focusMinutes, 0);
+    const tasksDone = lastWeekDays.reduce((n, d) => n + d.tasksDone, 0);
+    const tasksPlanned = lastWeekDays.reduce((n, d) => n + d.tasksPlanned, 0);
+    const activeDays = lastWeekDays.filter((d) => d.moved).length;
+    const paid = revenueIn(
+      invoices.filter((i) => !i.owner_id || i.owner_id === ownerId),
+      lastWeekStart, lastWeekEnd
+    ).paid;
+    const focusHours = Math.round((focusMinutes / 60) * 10) / 10;
+
+    const hasTarget =
+      lastWeekTargets.weekly_focus_hours > 0 || lastWeekTargets.weekly_tasks > 0 ||
+      lastWeekTargets.weekly_active_days > 0 || lastWeekTargets.monthly_revenue > 0;
+    const hadActivity = focusMinutes > 0 || tasksDone > 0 || paid > 0;
+
+    // Nothing to report and nothing to compare against — skip rather than
+    // notify about an empty week with no goal.
+    if (hasTarget || hadActivity) {
+      const parts: string[] = [];
+      parts.push(
+        lastWeekTargets.weekly_focus_hours > 0
+          ? `Focused ${focusHours}h of ${lastWeekTargets.weekly_focus_hours}h target`
+          : `Focused ${focusHours}h`
+      );
+      parts.push(
+        lastWeekTargets.weekly_tasks > 0
+          ? `${tasksDone}/${lastWeekTargets.weekly_tasks} tasks (${tasksPlanned} planned)`
+          : `${tasksDone} tasks done`
+      );
+      if (paid > 0) parts.push(`${lastWeekTargets.currency} ${paid.toLocaleString('en-IN')} paid`);
+      parts.push(`${activeDays}/7 active days`);
+
+      const metFocus = lastWeekTargets.weekly_focus_hours === 0 || focusHours >= lastWeekTargets.weekly_focus_hours;
+      const metTasks = lastWeekTargets.weekly_tasks === 0 || tasksDone >= lastWeekTargets.weekly_tasks;
+
+      alerts.push({
+        id: `weekly-digest-${lastWeekStart}`,
+        level: 'info',
+        title: hasTarget
+          ? metFocus && metTasks
+            ? `Last week: on target (${lastWeekStart} – ${lastWeekEnd})`
+            : `Last week's digest (${lastWeekStart} – ${lastWeekEnd})`
+          : `Last week's digest (${lastWeekStart} – ${lastWeekEnd})`,
+        detail: parts.join(' · '),
+        href: '/dashboard',
+        daysOut: null,
+      });
+    }
   }
 
   const rank: Record<Alert['level'], number> = { critical: 0, warning: 1, info: 2 };

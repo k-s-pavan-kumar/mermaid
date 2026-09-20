@@ -4,6 +4,7 @@ import { getProjectById } from '@/features/projects/queries';
 import {
   updateProjectStatus,
   updateProject,
+  updateProjectTargets,
   deleteProjectAndReturn,
   addPhase,
   updatePhase,
@@ -40,7 +41,7 @@ const TAB_LABEL: Record<string, string> = {
   overview: 'Overview', todo: 'To-do', milestones: 'Milestones', billing: 'Quotes & Invoices', submissions: 'Submissions', skills: 'AI skills', settings: 'Settings',
 };
 const STATUS: Record<string, string> = {
-  idea: 'Idea', ontrack: 'On track', review: 'In review', risk: 'At risk', done: 'Done',
+  idea: 'Idea', ontrack: 'On track', review: 'In review', risk: 'At risk', done: 'Done', dropped: 'Dropped',
 };
 
 export default async function ProjectDetailPage({
@@ -76,6 +77,7 @@ export default async function ProjectDetailPage({
   const boundAddMetric = addMetric.bind(null, id);
   const boundUpdateStatus = updateProjectStatus.bind(null, id);
   const boundUpdateProject = updateProject.bind(null, id);
+  const boundUpdateProjectTargets = updateProjectTargets.bind(null, id);
   const boundUpdatePhase = updatePhase.bind(null, id);
   const boundDeletePhase = deletePhase.bind(null, id);
   const boundMovePhase = movePhase.bind(null, id);
@@ -419,6 +421,30 @@ export default async function ProjectDetailPage({
               </div>
 
               <SubmitButton className="btn" pendingLabel="Saving…" style={{ width: 'fit-content' }}>Save changes</SubmitButton>
+            </form>
+          </div>
+
+          <div className="card" style={{ maxWidth: 560, marginTop: 16 }}>
+            <h3>Target for this project</h3>
+            <p className="text-muted" style={{ fontSize: 11.5, marginTop: -4 }}>
+              &ldquo;{project.name} should get 15h/week&rdquo; — separate from the
+              workspace-wide targets in Settings. Shows up on the{' '}
+              <a href="/dashboard">Dashboard</a> only while at least one of these is above 0.
+            </p>
+            <form action={boundUpdateProjectTargets} className="grid-2-eq" style={{ maxWidth: '100%' }}>
+              <div>
+                <label className="field-label" htmlFor="proj_weekly_focus_hours">Focused hours / week</label>
+                <input id="proj_weekly_focus_hours" name="weekly_focus_hours" type="number" min={0} max={168} step="0.5"
+                  defaultValue={project.targets?.weekly_focus_hours ?? 0} style={{ width: '100%' }} />
+              </div>
+              <div>
+                <label className="field-label" htmlFor="proj_monthly_focus_hours">Focused hours / month</label>
+                <input id="proj_monthly_focus_hours" name="monthly_focus_hours" type="number" min={0} max={744} step="1"
+                  defaultValue={project.targets?.monthly_focus_hours ?? 0} style={{ width: '100%' }} />
+              </div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <SubmitButton className="btn" pendingLabel="Saving…" style={{ width: 'fit-content' }}>Save target</SubmitButton>
+              </div>
             </form>
           </div>
 

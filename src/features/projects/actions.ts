@@ -6,6 +6,7 @@ import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
 import { TYPE_COLOR } from '@/lib/project-colors';
 import { scaffoldProject } from '@/features/scaffold/actions';
+import { logProjectField } from './audit-log';
 import type {
   Project,
   ProjectPhase,
@@ -83,11 +84,63 @@ export async function createProject(formData: FormData): Promise<void> {
 }
 
 export async function updateProjectStatus(id: string, formData: FormData): Promise<void> {
-  await requireOwner();
+  const owner = await requireOwner();
   const status = String(formData.get('status') ?? '') as ProjectStatus;
+  const before = await table<Project>('projects').find(id);
   await table<Project>('projects').update(id, { status });
+  if (before && before.status !== status) {
+    await logProjectField({
+      owner_id: owner, project_id: id, project_name: before.name,
+      field_changed: 'status', from_value: before.status, to_value: status,
+    });
+  }
   revalidatePath(`/projects/${id}`);
   revalidatePath('/projects');
+  revalidatePath('/reward-vault');
+}
+
+/**
+ * The documented substitute "paid" signal for a project with no real client
+ * invoice (internal tools, plugins, a YouTube video) — see
+ * `Project.earned_override` in types.ts. Requires a note every time, exactly
+ * like the audit-log rule demands, so the substitute criterion is visible in
+ * the trail each time it's used rather than just once. This is the only way
+ * `earned_override` is ever set — never a bare boolean flip.
+ */
+export async function markProjectEarnedOverride(id: string, formData: FormData): Promise<void> {
+  const owner = await requireOwner();
+  const note = String(formData.get('note') ?? '').trim();
+  const amount = Number(formData.get('amount') ?? 0);
+  if (!note || !Number.isFinite(amount) || amount <= 0) return;
+
+  const before = await table<Project>('projects').find(id);
+  if (!before) return;
+
+  await table<Project>('projects').update(id, {
+    earned_override: { amount, note, at: new Date().toISOString() },
+  });
+  await logProjectField({
+    owner_id: owner, project_id: id, project_name: before.name,
+    field_changed: 'earned', from_value: before.earned_override ? 'earned (override)' : 'not earned',
+    to_value: 'earned (override)', note,
+  });
+
+  revalidatePath(`/projects/${id}`);
+  revalidatePath('/reward-vault');
+}
+
+export async function clearProjectEarnedOverride(id: string): Promise<void> {
+  const owner = await requireOwner();
+  const before = await table<Project>('projects').find(id);
+  if (!before) return;
+  await table<Project>('projects').update(id, { earned_override: null });
+  await logProjectField({
+    owner_id: owner, project_id: id, project_name: before.name,
+    field_changed: 'earned', from_value: 'earned (override)', to_value: 'not earned',
+    note: 'Override cleared.',
+  });
+  revalidatePath(`/projects/${id}`);
+  revalidatePath('/reward-vault');
 }
 
 /** Edit the project header itself — name, types, client link, description. */
@@ -108,6 +161,25 @@ export async function updateProject(id: string, formData: FormData): Promise<voi
 
   revalidatePath(`/projects/${id}`);
   revalidatePath('/projects');
+}
+
+export async function updateProjectTargets(id: string, formData: FormData): Promise<void> {
+  await requireOwner();
+  const num = (k: string, max = 168): number => {
+    const v = Number(formData.get(k) ?? 0);
+    if (!Number.isFinite(v) || v < 0) return 0;
+    return Math.min(max, v);
+  };
+
+  await table<Project>('projects').update(id, {
+    targets: {
+      weekly_focus_hours: num('weekly_focus_hours', 168),
+      monthly_focus_hours: num('monthly_focus_hours', 744),
+    },
+  });
+
+  revalidatePath(`/projects/${id}`);
+  revalidatePath('/dashboard');
 }
 
 /**

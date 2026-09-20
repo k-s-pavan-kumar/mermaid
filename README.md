@@ -476,3 +476,235 @@ years, leap Februaries and `paid_at`-dated revenue all behave.
 `tasks.scheduled_minute`, `tasks.duration_minutes`, `settings.targets` — all
 additive, with copy-paste `alter table` statements in the migration block at
 the top of `supabase/schema.sql`.
+
+---
+
+## This pass: per-project targets, streaks, weekly digest, custom categories, editable target history
+
+### Per-project targets
+Each project's **Settings** tab now has its own weekly/monthly focused-hours
+target — "Acme should get 15h/week" — independent of the workspace-wide
+targets. Stored as a `targets` jsonb column on `projects`. A project only
+shows up in the Dashboard's new "Project targets" section once at least one
+of its two numbers is above 0. The actual-hours side of the progress bar
+reuses the exact same avoid-double-counting reconciliation the category
+buckets use (a timer and the planned block it ran against count once), just
+keyed by project id instead of category — see `sumProjectMinutes()` /
+`DaySpend.projectMinutes` in `src/features/dashboard/queries.ts`.
+
+### Streaks
+A card at the top of the Dashboard: current consecutive active-day streak,
+and the longest streak in the last 400 days. "Active" reuses the exact same
+forgiving `moved` definition as everything else (a finished task, a focus
+session, or a meeting). If today hasn't produced anything yet, the current
+streak is still counted through yesterday rather than reading as broken —
+the day isn't over. Bounded to a 400-day rolling window rather than an
+account's entire history, since that cost grows forever for a number that
+stops being meaningful past a year or so anyway. See `getStreaks()`.
+
+### Weekly digest
+No cron job was added — there's nowhere to run one in this deployment yet.
+Instead, the weekly digest is the 7th rule in the existing derived-alerts
+system (`src/features/notifications/queries.ts`), the same mechanism that
+already flags overdue invoices and stalled projects. Once a week has fully
+ended, an alert appears: *"Last week's digest (2026-09-07 – 2026-09-13):
+Focused 4.5h of 25h target · 6/14 tasks · 6/7 active days"*, comparing
+against whatever targets actually applied that week. It's keyed by the
+week's start date, so dismissing it is permanent for that week and next
+Monday's digest is automatically a fresh, undismissed alert. A week with
+literally nothing in it and no target set is skipped rather than notifying
+about an empty week.
+
+### Custom categories
+Settings → **Categories** lets you define buckets like "Deep work", "Admin",
+"Learning" as an alternative to the Dashboard's default project-type
+buckets. Tag any task with one from a small select on its card (Today board
+or timebox block) — a tagged task always wins over its project's type in the
+24-hour pie. A focus session without its own tag inherits its linked task's
+tag before falling back to the project's type, so tagging a task once shapes
+every session logged against it too. Categories are entirely optional:
+define none, and every task buckets by project type exactly as before this
+existed.
+
+### Editable historical targets
+Every save under Settings → Targets & goals is now a **new dated version**
+rather than an edit in place — `targets_history`, one row per
+`(owner_id, effective_from)`. "What was my target back in June" is
+answerable because the Dashboard's week/month/year progress each look up
+`pickTargets(history, periodStart)` using their own start date, not "whatever
+the targets are today". Saving the same `effective_from` twice overwrites
+just that date's version (fixing a typo doesn't spam the history); changing
+the date always creates a new one. Settings shows the full version list with
+a "current" badge on whichever one is actually in effect.
+
+`WorkspaceSettings.targets` still exists as a convenience — a read-time
+snapshot of "whatever applies today" — for anything that just wants the
+current numbers (the "no targets set" banner, default currency) without
+caring that targets are versioned at all.
+
+### Verifying
+`npm run verify:dashboard` now also covers: category tags overriding project
+type (and a session's own tag overriding its linked task's), streak
+current/longest math including the "today hasn't happened yet" edge case,
+`pickTargets()` resolving the correct historical version (this caught a real
+bug — it originally trusted the caller to have pre-sorted the history array,
+which silently returned the wrong version when they hadn't; it now sorts
+defensively), per-project progress and its double-counting avoidance, and
+the weekly digest's underlying figures.
+
+**Note on running the verify suite together**: each `verify:*` script
+assumes it's starting from a freshly seeded `data/db.local.json`
+(`npm run db:seed:local`) — none of them reset the database themselves, by
+design, so you can inspect what a script left behind after it runs. Running
+several back-to-back without reseeding between them will surface stale data
+as spurious failures; that's the harness, not the app.
+
+### Schema changes
+`projects.targets`, `settings.categories`, `tasks.category`,
+`focus_sessions.category`, and the new `targets_history` table — all
+additive, with copy-paste `alter table` / `create table` statements in the
+migration block at the top of `supabase/schema.sql`, plus three recommended
+indexes (`tasks(owner_id, scheduled_date)`, `focus_sessions(owner_id, date)`,
+`invoices(owner_id, paid_at) where status = 'paid'`) now that the Dashboard
+scans a full financial year on every visit.
+
+### A note on `local-store.ts`
+While testing this pass I found that `table()` would throw if a table key
+was simply absent from a hand-built `LocalDB` object — which every table
+added after initial launch (`targets_history` included) will be, for anyone
+running against an old `data/db.local.json` that predates it. `table()` now
+treats a missing table as an empty one rather than crashing, matching how
+every other addition in this app has been designed to degrade.
+
+---
+
+## This pass: five new features — Daily Finance, Bug Bounty Pipeline, Reward Vault, Learning Tracker, Release Stats
+
+Built from five skill specs and their reference mockups. All five are reachable
+from a new **Personal** group in the sidebar, and each gets exactly one compact
+number on the Dashboard's **Elsewhere** strip at the very bottom — a glance and
+a link, never the main event, per the brief that these shouldn't distract from
+the Dashboard itself.
+
+### Adaptations made to fit the existing app
+A few of the specs assumed shapes that didn't quite match what Meridian
+already has. Rather than force a fit or silently diverge, here's exactly what
+changed and why:
+
+- **`ProjectType` gained `freelance` and `institute`.** The Daily Finance spec
+  wants income categorised by a `client | freelance | institute | internal |
+  other` project type; Meridian's real `ProjectType` is a different, richer
+  list. Extended it the same additive way every other type was added — nothing
+  removed, nothing renamed.
+- **`ProjectStatus` gained `dropped`.** The Reward Vault needs to tell
+  "finished, unlocks a reward" apart from "abandoned, releases the reward"
+  without overloading `done` for both. `momentum.ts` and the stalled-project
+  alert were both updated to exclude it, same as `done`.
+- **No separate `ProjectPayment` entity.** Meridian already has real invoicing
+  (`Invoice`, with `status`, `amount`, `paid_at`) that does everything a
+  ProjectPayment would — including several payments per project, since a
+  project can have several invoices. Marking an invoice paid **is** the income
+  event; see `markInvoicePaid()` in `src/features/billing/actions.ts`.
+- **Bug Bounty Pipeline is a new, separate table (`bounty_cases`), not a
+  rename of the existing `bounty_submissions`.** The app already had a
+  lighter, project-nested bounty log (a bounty-type project's own
+  "Submissions" tab). Rather than risk breaking that working feature with a
+  wide rename, the richer standalone pipeline the skill describes — no
+  project, full payout lifecycle — lives in its own table, reachable at
+  `/bounty-pipeline`.
+- **The mockup's "Locked" pill was dropped as a distinct state.** The Reward
+  Vault's own state-machine diagram defines six states
+  (`in_progress → cooling_off → ready → purchased`, plus `released`/
+  `expired`) and no rule anywhere describes what triggers a seventh "locked"
+  state — the reference mockup even uses it inconsistently between two rows
+  in the same situation. `in_progress` is the one state for "linked, not yet
+  earned," shown throughout with the mockup's amber "In progress" pill.
+- **A project's "progress" is approximated, not stored.** Projects have no
+  native progress percentage. The Reward Vault's progress bar for a
+  project-linked need uses milestones-done/total when the project has
+  milestones, falls back to tasks-done/total, and falls back again to a
+  status-based estimate if neither exists.
+- **Release Stats' external calls are real but untestable from this build
+  sandbox.** The npm (`api.npmjs.org`), PyPI (`pypi.org`) and GitHub
+  (`api.github.com`) calls in `syncOnePackage()` are genuine, keyless public
+  API calls that will work once deployed with normal internet access — this
+  sandbox's own outbound network allowlist doesn't include those domains, so
+  I could not exercise them end-to-end here. Every branch degrades to "keep
+  the last known snapshot, mark it stale" on any failure rather than
+  throwing or showing a false zero — verified by seeding a never-synced
+  package and confirming it renders the stale state correctly. Chrome Web
+  Store has no public, keyless API, so those cards are manual-entry only.
+
+### Daily Finance (`/daily-finance`)
+The rule that matters: **there is no way to type in income.** The expense
+form (`logExpense`) only ever writes `type: 'expense'`; every `type: 'income'`
+row is written by `postIncomeEntry()`, called only from another feature's own
+action — `markInvoicePaid()` in billing, or `moveToPaid()` in the Bug Bounty
+Pipeline. Both posting paths are idempotent per source event (a unique index
+on `linked_invoice_id`/`linked_bounty_id`/`linked_need_id` backs this in
+Postgres; the local store checks the same thing in code) — marking the same
+invoice paid twice, or a double-click, never double-posts.
+
+### Bug Bounty Pipeline (`/bounty-pipeline`)
+A four-column kanban (Submitted → Triaged → Accepted → Paid, plus a collapsed
+Rejected/Duplicate list). The payout figure shown changes meaning as a card
+moves right — your own estimate, then the program's confirmed number, then
+the real paid amount — never blended into one generic "amount" field.
+Reaching Paid posts exactly one Daily Finance income entry.
+
+### Reward Vault (`/reward-vault`)
+The state machine: a Need unlocks only when its linked project is **both**
+`done` and has a paid invoice (or the documented `earned_override`
+substitute, for non-invoiced work — always requires a note, always logged).
+Unlocking starts a cooldown, never a purchase directly; the cooldown ending
+makes it `ready`, with its own expiry; sitting unpurchased past that expiry
+auto-releases it. A dropped project releases its Need immediately regardless
+of progress. Reconciliation (`reconcileNeeds()`) runs lazily on every page
+read rather than on a schedule — there's no cron in this deployment — which
+the spec explicitly allows. `status`, `unlocked_at` and `purchased_at` are
+written only by that reconciliation function and the dedicated
+`markPurchased()` action; no form anywhere sets them directly. A toast fires
+exactly once per transition via a `notify_pending` flag that's set during
+reconciliation and cleared the instant the client shows it.
+
+Also linkable to a **Learning Tracker** course, not just a project — a
+completed course satisfies the same unlock rule.
+
+### Learning Tracker (`/learning-tracker`)
+Status and progress are always derived from `completed_lessons`/
+`total_lessons`, never set directly — editing lesson counts can't leave
+status out of sync with them. Can optionally link a newly added course to an
+existing released/expired Reward Vault Need from the same form.
+
+### Release Stats (`/release-stats`)
+Real npm/PyPI/GitHub API calls behind a manual "Sync now" — see the
+adaptations section above for what that means in this build. A "family" like
+several npm sub-packages under one umbrella name shows as one rolled-up card
+with per-package figures underneath, each syncing independently so one
+package's failure doesn't affect its siblings.
+
+### Verifying
+`npm run verify:new-features` — 39 checks covering the Reward Vault's full
+state-machine walk (unlock → cooldown → ready → purchased, plus expiry and a
+dropped-project release), spend-cap and one-active-need-per-source
+validation, Bug Bounty payout-meaning-per-column, Daily Finance posting
+idempotency, and Learning Tracker status/progress derivation.
+
+Like the rest of this suite, it tests the query/logic layer directly rather
+than calling `'use server'` actions — those call `getSessionEmail()`
+(`next/headers`' `cookies()`) and `revalidatePath()`, both of which only work
+inside a real Next.js request and throw in a plain script. Where an action
+did pure-DB-mutation work worth testing directly (`postIncomeEntry`,
+`postRewardVaultExpense`), that logic was split into `insertIncomeEntry()` /
+`insertRewardVaultExpense()` in `daily-finance/queries.ts`, with the action
+now just calling the pure version and then `revalidatePath()` — the same
+separation the rest of this codebase already uses between `queries.ts`
+(logic) and `actions.ts` (the Next.js/session glue around it).
+
+### Schema changes
+Seven new tables — `project_status_log`, `finance_entries`, `bounty_cases`,
+`needs`, `courses`, `tracked_packages`, `metric_snapshots` — plus
+`projects.earned_override`, the extended `type`/`status` check constraints,
+and `settings.reward_vault`. All additive; copy-paste statements are in the
+migration block at the top of `supabase/schema.sql`, and RLS is enabled with
+an owner-only policy on every new table.

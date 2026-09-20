@@ -4,9 +4,10 @@ import { durationMinutes } from '@/features/today/time';
 import { primaryType } from '@/lib/project-colors';
 import { grandTotal, type Invoice } from '@/features/billing/types';
 import type { Task, FocusSession } from '@/features/today/types';
-import type { Project, ProjectType } from '@/features/projects/types';
+import type { Project, ProjectType, ProjectTargets } from '@/features/projects/types';
 import type { Meeting } from '@/features/meetings/types';
-import type { Targets } from '@/features/settings/types';
+import type { Targets, TargetsVersion, CategoryDef } from '@/features/settings/types';
+import { pickTargets } from '@/features/settings/queries';
 import {
   MINUTES_PER_DAY, MEETINGS_KEY, UNASSIGNED_KEY, UNTRACKED_KEY,
   categoryMeta, type CategoryMeta,
@@ -42,6 +43,24 @@ export interface DaySpend {
   tasksPlanned: number;
   /** Did anything at all happen? Same forgiving definition as the streak. */
   moved: boolean;
+  /** Minutes actually worked, per project id — the input to per-project
+   *  targets. Same avoid-double-counting rule as the category buckets. */
+  projectMinutes: Record<string, number>;
+}
+
+/**
+ * How a category is chosen for one task or focus session.
+ *
+ * A task's own `category` tag (set in Settings → assigned on the task) wins
+ * when present — that's an explicit choice about how the person wants their
+ * time read, and should override whatever project it happens to sit under.
+ * A focus session without its own tag inherits its linked task's tag before
+ * falling back to the project's type, so tagging a task once still shapes
+ * every session logged against it.
+ */
+function taskCategory(t: Pick<Task, 'category' | 'project_id'>, typeOf: Map<string, ProjectType>): string {
+  if (t.category) return t.category;
+  return (t.project_id && typeOf.get(t.project_id)) || UNASSIGNED_KEY;
 }
 
 /**
@@ -50,7 +69,7 @@ export interface DaySpend {
  * The one subtle decision here is avoiding double counting. A block on the
  * timebox and a focus session against that same project are usually the
  * *same* hour of your life recorded twice — once as an intention, once as
- * an outcome. So for each project category:
+ * an outcome. So for each category:
  *
  *     minutes = focus minutes
  *             + max(0, planned block minutes − focus minutes)
@@ -61,6 +80,11 @@ export interface DaySpend {
  * Whatever is left of the 1440 becomes "unaccounted" rather than being
  * silently dropped — a day where you tracked three hours should look like a
  * day where you tracked three hours.
+ *
+ * Per-project minutes (`projectMinutes`, for per-project targets) follow the
+ * exact same avoid-double-counting rule, just keyed by project id instead of
+ * by category — a project with no id (unassigned work) isn't included there,
+ * since a target can't attach to "no project".
  */
 export async function getDaySpend(
   ownerId: string,
@@ -75,14 +99,24 @@ export async function getDaySpend(
   ]);
 
   const typeOf = new Map<string, ProjectType>(projects.map((p) => [p.id, primaryType(p)]));
-  const categoryFor = (projectId: string | null | undefined): string =>
-    (projectId && typeOf.get(projectId)) || UNASSIGNED_KEY;
+  const taskById = new Map(tasks.map((t) => [t.id, t]));
+
+  const categoryForTask = (t: Task) => taskCategory(t, typeOf);
+  const categoryForSession = (f: FocusSession): string => {
+    if (f.category) return f.category;
+    const linked = f.task_id ? taskById.get(f.task_id) : undefined;
+    if (linked?.category) return linked.category;
+    return (f.project_id && typeOf.get(f.project_id)) || UNASSIGNED_KEY;
+  };
 
   const inRange = (d?: string | null): d is string => !!d && d >= from && d <= to;
 
-  // Per day: focus minutes by category, planned minutes by category, meetings.
+  // Per day: focus minutes by category / by project, planned minutes by
+  // category / by project, meetings.
   const focusByDay = new Map<string, Map<string, number>>();
   const plannedByDay = new Map<string, Map<string, number>>();
+  const focusByDayProject = new Map<string, Map<string, number>>();
+  const plannedByDayProject = new Map<string, Map<string, number>>();
   const meetingByDay = new Map<string, number>();
   const doneByDay = new Map<string, number>();
   const plannedCountByDay = new Map<string, number>();
@@ -95,7 +129,8 @@ export async function getDaySpend(
 
   for (const f of sessions) {
     if (!inRange(f.date)) continue;
-    bump(focusByDay, f.date, categoryFor(f.project_id), Math.max(0, f.completed_minutes));
+    bump(focusByDay, f.date, categoryForSession(f), Math.max(0, f.completed_minutes));
+    if (f.project_id) bump(focusByDayProject, f.date, f.project_id, Math.max(0, f.completed_minutes));
   }
 
   for (const t of tasks) {
@@ -105,7 +140,8 @@ export async function getDaySpend(
     // Only tasks actually placed on the grid represent a claim on time;
     // something still sitting in the brain dump has no hour attached to it.
     if (t.scheduled_hour === null || t.scheduled_hour === undefined) continue;
-    bump(plannedByDay, t.scheduled_date, categoryFor(t.project_id), durationMinutes(t));
+    bump(plannedByDay, t.scheduled_date, categoryForTask(t), durationMinutes(t));
+    if (t.project_id) bump(plannedByDayProject, t.scheduled_date, t.project_id, durationMinutes(t));
   }
 
   for (const m of meetings) {
@@ -114,20 +150,30 @@ export async function getDaySpend(
     meetingByDay.set(day, (meetingByDay.get(day) ?? 0) + Math.max(0, m.duration_mins || 0));
   }
 
+  const reconcile = (focus: Map<string, number>, planned: Map<string, number>): Record<string, number> => {
+    const out: Record<string, number> = {};
+    for (const key of new Set([...focus.keys(), ...planned.keys()])) {
+      const f = focus.get(key) ?? 0;
+      const p = planned.get(key) ?? 0;
+      const minutes = f + Math.max(0, p - f);
+      if (minutes > 0) out[key] = minutes;
+    }
+    return out;
+  };
+
   const out: DaySpend[] = [];
   for (let d = from; d <= to; d = shiftIso(d, 1)) {
     const focus = focusByDay.get(d) ?? new Map<string, number>();
     const planned = plannedByDay.get(d) ?? new Map<string, number>();
     const meetingMinutes = meetingByDay.get(d) ?? 0;
 
-    const buckets: Record<string, number> = {};
-    for (const key of new Set([...focus.keys(), ...planned.keys()])) {
-      const f = focus.get(key) ?? 0;
-      const p = planned.get(key) ?? 0;
-      const minutes = f + Math.max(0, p - f);
-      if (minutes > 0) buckets[key] = minutes;
-    }
+    const buckets = reconcile(focus, planned);
     if (meetingMinutes > 0) buckets[MEETINGS_KEY] = meetingMinutes;
+
+    const projectMinutes = reconcile(
+      focusByDayProject.get(d) ?? new Map<string, number>(),
+      plannedByDayProject.get(d) ?? new Map<string, number>()
+    );
 
     const focusMinutes = [...focus.values()].reduce((a, b) => a + b, 0);
     const plannedMinutes = [...planned.values()].reduce((a, b) => a + b, 0);
@@ -153,6 +199,7 @@ export async function getDaySpend(
       tasksDone,
       tasksPlanned: plannedCountByDay.get(d) ?? 0,
       moved: tasksDone > 0 || focusMinutes > 0 || meetingMinutes > 0,
+      projectMinutes,
     });
   }
 
@@ -164,6 +211,15 @@ export function sumBuckets(days: DaySpend[]): Record<string, number> {
   const total: Record<string, number> = {};
   for (const d of days) {
     for (const [k, v] of Object.entries(d.buckets)) total[k] = (total[k] ?? 0) + v;
+  }
+  return total;
+}
+
+/** Collapse a run of days into one project id → minutes map. */
+export function sumProjectMinutes(days: DaySpend[]): Record<string, number> {
+  const total: Record<string, number> = {};
+  for (const d of days) {
+    for (const [k, v] of Object.entries(d.projectMinutes)) total[k] = (total[k] ?? 0) + v;
   }
   return total;
 }
@@ -247,8 +303,6 @@ export interface RevenueSlice {
   invoiced: number;
 }
 
-const EMPTY_REVENUE: RevenueSlice = { paid: 0, outstanding: 0, invoiced: 0 };
-
 /**
  * Revenue for a date range.
  *
@@ -275,6 +329,107 @@ export function revenueIn(invoices: Invoice[], from: string, to: string): Revenu
 }
 
 // ---------------------------------------------------------------------------
+// Streaks
+// ---------------------------------------------------------------------------
+
+export interface Streaks {
+  /** Consecutive days up to and including today (or yesterday, if nothing
+   *  has happened yet today) on which something moved. */
+  current: number;
+  /** The longest such run within the lookback window. */
+  longest: number;
+  longestStart: string | null;
+  longestEnd: string | null;
+  /** How far back this was actually computed — so the UI can be honest that
+   *  "longest" means "longest in the last N days", not "of all time", if the
+   *  account is older than the window. */
+  windowDays: number;
+}
+
+const STREAK_WINDOW_DAYS = 400;
+
+/**
+ * Current and longest streaks of "active" days — the same forgiving
+ * definition DaySpend.moved uses (a finished task, a focus session, or a
+ * meeting all count).
+ *
+ * Bounded to a rolling window rather than the account's entire history:
+ * walking every day since account creation gets more expensive the longer
+ * someone has used the app, for a number that stops being meaningful past a
+ * year or so anyway. 400 days comfortably covers "did I keep this up all
+ * year" while staying a single bounded query.
+ */
+export async function getStreaks(ownerId: string, today: string): Promise<Streaks> {
+  const from = shiftIso(today, -(STREAK_WINDOW_DAYS - 1));
+  const days = await getDaySpend(ownerId, from, today);
+  const movedByDate = new Map(days.map((d) => [d.date, d.moved]));
+
+  // Current streak: walk backward from today. If today itself has nothing
+  // yet (the day isn't over), that shouldn't zero out a real streak, so
+  // start from yesterday when today is empty.
+  let cursor = movedByDate.get(today) ? today : shiftIso(today, -1);
+  let current = 0;
+  while (movedByDate.get(cursor)) {
+    current += 1;
+    cursor = shiftIso(cursor, -1);
+  }
+
+  // Longest streak anywhere in the window.
+  let longest = 0;
+  let longestStart: string | null = null;
+  let longestEnd: string | null = null;
+  let runStart: string | null = null;
+  let run = 0;
+  for (const d of days) {
+    if (d.moved) {
+      if (run === 0) runStart = d.date;
+      run += 1;
+      if (run > longest) {
+        longest = run;
+        longestStart = runStart;
+        longestEnd = d.date;
+      }
+    } else {
+      run = 0;
+      runStart = null;
+    }
+  }
+
+  return { current, longest, longestStart, longestEnd, windowDays: STREAK_WINDOW_DAYS };
+}
+
+// ---------------------------------------------------------------------------
+// Per-project targets
+// ---------------------------------------------------------------------------
+
+export interface ProjectProgress {
+  projectId: string;
+  projectName: string;
+  targets: ProjectTargets;
+  weekFocusHours: number;
+  monthFocusHours: number;
+}
+
+/** Projects that have a per-project target set, with this week's and this
+ *  month's actual focused hours against them. */
+export function projectProgressFrom(
+  projects: Project[],
+  weekMinutesByProject: Record<string, number>,
+  monthMinutesByProject: Record<string, number>
+): ProjectProgress[] {
+  return projects
+    .filter((p) => (p.targets?.weekly_focus_hours ?? 0) > 0 || (p.targets?.monthly_focus_hours ?? 0) > 0)
+    .map((p) => ({
+      projectId: p.id,
+      projectName: p.name,
+      targets: { weekly_focus_hours: p.targets?.weekly_focus_hours ?? 0, monthly_focus_hours: p.targets?.monthly_focus_hours ?? 0 },
+      weekFocusHours: Math.round(((weekMinutesByProject[p.id] ?? 0) / 60) * 10) / 10,
+      monthFocusHours: Math.round(((monthMinutesByProject[p.id] ?? 0) / 60) * 10) / 10,
+    }))
+    .sort((a, b) => a.projectName.localeCompare(b.projectName));
+}
+
+// ---------------------------------------------------------------------------
 // The assembled dashboard
 // ---------------------------------------------------------------------------
 
@@ -292,6 +447,13 @@ export interface PeriodProgress {
   activeDays: number;
   meetingHours: number;
   revenue: RevenueSlice;
+  /**
+   * The targets that actually applied during this period — picked from
+   * targets_history using the period's own start date, not "whatever the
+   * targets are today". A week in June is judged against June's targets
+   * even if they've changed three times since.
+   */
+  targets: Targets;
 }
 
 export interface MonthSpread {
@@ -309,6 +471,9 @@ export interface MonthSpread {
 
 export interface DashboardData {
   today: string;
+  /** Targets in effect today — used for the "no targets set" banner and as
+   *  the default currency/fiscal-month for money formatting. Period-specific
+   *  progress uses its own `targets` field instead of this. */
   targets: Targets;
   week: PeriodProgress;
   month: PeriodProgress;
@@ -322,6 +487,8 @@ export interface DashboardData {
   months: MonthSpread[];
   /** Categories actually present across the year, for a stable legend. */
   categories: CategoryMeta[];
+  streaks: Streaks;
+  projectProgress: ProjectProgress[];
 }
 
 function progress(
@@ -330,7 +497,8 @@ function progress(
   end: string,
   today: string,
   days: DaySpend[],
-  revenue: RevenueSlice
+  revenue: RevenueSlice,
+  targets: Targets
 ): PeriodProgress {
   const daysTotal = daysBetween(start, end);
   const daysElapsed = Math.max(0, Math.min(daysTotal, daysBetween(start, today > end ? end : today)));
@@ -350,18 +518,33 @@ function progress(
     tasksPlanned: days.reduce((n, d) => n + d.tasksPlanned, 0),
     activeDays: days.filter((d) => d.moved).length,
     revenue,
+    targets,
   };
 }
 
-export async function getDashboard(ownerId: string, targets: Targets): Promise<DashboardData> {
+/**
+ * Assemble the whole Dashboard for one owner.
+ *
+ * Takes the full targets history (not a single Targets object) so each
+ * period can be judged against whatever targets actually applied when that
+ * period happened, and the workspace's custom category definitions so the
+ * legend can label and colour them correctly.
+ */
+export async function getDashboard(
+  ownerId: string,
+  targetsHistory: TargetsVersion[],
+  customCategories: CategoryDef[] = []
+): Promise<DashboardData> {
   const today = todayIso();
-  const fy = fiscalYearOf(today, targets.fiscal_year_start_month || 1);
+  const todaysTargets = pickTargets(targetsHistory, today);
+  const fy = fiscalYearOf(today, todaysTargets.fiscal_year_start_month || 1);
 
   // One pass over the whole financial year; the week and month views are
   // slices of it rather than three separate scans of the same tables.
-  const [yearDays, invoices] = await Promise.all([
+  const [yearDays, invoices, projects] = await Promise.all([
     getDaySpend(ownerId, fy.start, fy.end),
     table<Invoice>('invoices').all(),
+    table<Project>('projects').where((p) => p.owner_id === ownerId),
   ]);
   const mine = invoices.filter((i) => !i.owner_id || i.owner_id === ownerId);
 
@@ -380,6 +563,7 @@ export async function getDashboard(ownerId: string, targets: Targets): Promise<D
     weekStart >= fy.start && weekEnd <= fy.end
       ? slice(weekStart, weekEnd)
       : await getDaySpend(ownerId, weekStart, weekEnd);
+  const monthDays = slice(monthStart, monthEnd);
 
   const months: MonthSpread[] = fiscalMonths(fy.start).map((m) => {
     const end = monthEndOf(m);
@@ -405,15 +589,33 @@ export async function getDashboard(ownerId: string, targets: Targets): Promise<D
     .filter((k) => k !== UNTRACKED_KEY)
     .sort()
     .concat(UNTRACKED_KEY)
-    .map(categoryMeta);
+    .map((k) => categoryMeta(k, customCategories));
+
+  const [streaks, projectMinutesWeek, projectMinutesMonth] = [
+    await getStreaks(ownerId, today),
+    sumProjectMinutes(weekDays),
+    sumProjectMinutes(monthDays),
+  ];
 
   return {
     today,
-    targets,
-    week: progress('This week', weekStart, weekEnd, today, weekDays, revenueIn(mine, weekStart, weekEnd)),
-    month: progress('This month', monthStart, monthEnd, today, slice(monthStart, monthEnd), revenueIn(mine, monthStart, monthEnd)),
-    year: { ...progress('This year', fy.start, fy.end, today, yearDays, revenueIn(mine, fy.start, fy.end)), label: fy.label },
-    monthDays: slice(monthStart, monthEnd),
+    targets: todaysTargets,
+    week: progress(
+      'This week', weekStart, weekEnd, today, weekDays,
+      revenueIn(mine, weekStart, weekEnd), pickTargets(targetsHistory, weekStart)
+    ),
+    month: progress(
+      'This month', monthStart, monthEnd, today, monthDays,
+      revenueIn(mine, monthStart, monthEnd), pickTargets(targetsHistory, monthStart)
+    ),
+    year: {
+      ...progress(
+        'This year', fy.start, fy.end, today, yearDays,
+        revenueIn(mine, fy.start, fy.end), pickTargets(targetsHistory, today)
+      ),
+      label: fy.label,
+    },
+    monthDays,
     todaySpend:
       byDate.get(today) ?? {
         date: today,
@@ -425,8 +627,11 @@ export async function getDashboard(ownerId: string, targets: Targets): Promise<D
         tasksDone: 0,
         tasksPlanned: 0,
         moved: false,
+        projectMinutes: {},
       },
     months,
     categories,
+    streaks,
+    projectProgress: projectProgressFrom(projects, projectMinutesWeek, projectMinutesMonth),
   };
 }

@@ -12,7 +12,7 @@ import { getSettings } from '@/features/settings/queries';
 import type { ProjectType } from '@/features/projects/types';
 
 const STATUS: Record<string, string> = {
-  idea: 'Idea', ontrack: 'On track', review: 'In review', risk: 'At risk', done: 'Done',
+  idea: 'Idea', ontrack: 'On track', review: 'In review', risk: 'At risk', done: 'Done', dropped: 'Dropped',
 };
 
 const inr = (n: number) => '₹' + n.toLocaleString('en-IN');

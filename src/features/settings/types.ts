@@ -62,9 +62,67 @@ export interface WorkspaceSettings {
   owner_id: string;
   clocks: ClockWidget[];
   business: BusinessProfile;
+  /**
+   * The targets in effect *today* — a convenience snapshot computed from
+   * `targets_history` at read time, not stored directly. Kept on
+   * WorkspaceSettings so anything that just wants "what applies right now"
+   * (the "no targets set" banner, a default currency) doesn't need to know
+   * targets are versioned at all. Historical, period-accurate lookups go
+   * through `pickTargets()` in the dashboard queries instead.
+   */
   targets: Targets;
+  /**
+   * User-defined categories for the Dashboard's 24-hour split — "deep
+   * work", "admin", "learning" — as an alternative to bucketing by project
+   * type. Empty by default: until you define one, every task buckets by
+   * its project's type exactly as before.
+   */
+  categories: CategoryDef[];
+  /**
+   * The Reward Vault's friction windows — configurable per person since the
+   * right amount of friction to impose on yourself is a personal call, not
+   * a constant. Defaults to DEFAULT_* in reward-vault/types.ts when absent.
+   */
+  reward_vault: RewardVaultConfig;
   /** Where `scaffoldProject` is allowed to create folders. */
   code_root: string;
+}
+
+export interface RewardVaultConfig {
+  cooldown_hours: number;
+  expiry_days: number;
+  /** 0–1, the fraction of a linked project's invoice a Need's price may not
+   *  exceed. */
+  spend_cap_pct: number;
+  /** Flat cap for a course-linked Need, which has no invoice to be a
+   *  percentage of. */
+  course_cap: number;
+  /** Auto-post a Daily Finance expense when a Need is marked purchased. */
+  auto_post_purchases: boolean;
+}
+
+/** A custom bucket for the 24-hour pie, defined once in Settings and then
+ *  assignable to any task. */
+export interface CategoryDef {
+  key: string;
+  label: string;
+  color: string;
+}
+
+/**
+ * One dated version of Targets. "What was my target back in June" is a
+ * question the app can only answer if targets are a history rather than a
+ * single row that silently gets overwritten — so every change to targets
+ * creates a new version rather than editing one in place. The version whose
+ * `effective_from` is the latest date not after a given day is the target
+ * that applied on that day.
+ */
+export interface TargetsVersion {
+  id: string;
+  owner_id: string;
+  effective_from: string; // 'YYYY-MM-DD'
+  targets: Targets;
+  created_at: string;
 }
 
 export const DEFAULT_CLOCKS: ClockWidget[] = [
@@ -105,3 +163,22 @@ export const DEFAULT_TARGETS: Targets = {
   currency: 'INR',
   fiscal_year_start_month: 4,
 };
+
+/** No custom categories out of the box — every task buckets by its
+ *  project's type until you define your first one. */
+export const DEFAULT_CATEGORIES: CategoryDef[] = [];
+
+export const DEFAULT_REWARD_VAULT: RewardVaultConfig = {
+  cooldown_hours: 48,
+  expiry_days: 14,
+  spend_cap_pct: 0.5,
+  course_cap: 10_000,
+  auto_post_purchases: true,
+};
+
+/** A friendly palette to pick from when defining a category, so the first
+ *  one someone adds doesn't default to a jarring pure red or pure blue. */
+export const CATEGORY_COLOR_CHOICES = [
+  '#5F3DEB', '#0EA5A4', '#DB7C3E', '#C44FB5', '#3B82F6',
+  '#65A30D', '#DC2626', '#7C3AED', '#0891B2', '#B45309',
+];

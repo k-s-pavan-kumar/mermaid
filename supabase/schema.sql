@@ -25,6 +25,64 @@
 --
 --   -- Weekly / monthly / yearly targets shown on the Dashboard:
 --   alter table settings add column targets jsonb not null default '{}'::jsonb;
+--
+--   -- Per-project targets ("Acme should get 15h/week"):
+--   alter table projects add column targets jsonb not null default '{}'::jsonb;
+--
+--   -- Custom Dashboard categories ("deep work" / "admin" / "learning"),
+--   -- and letting a task or focus session carry one directly:
+--   alter table settings add column categories jsonb not null default '[]'::jsonb;
+--   alter table tasks add column category text;
+--   alter table focus_sessions add column category text;
+--
+--   -- Editable historical targets: every save becomes a new dated version
+--   -- instead of overwriting settings.targets in place, so "what was my
+--   -- target back in June" stays answerable. settings.targets is no longer
+--   -- written to directly by the app (queries.ts computes it at read time
+--   -- from this table) but the column itself is left in place, harmless.
+--   create table targets_history (
+--     id            text primary key,
+--     owner_id      uuid not null references auth.users(id) default auth.uid(),
+--     effective_from date not null,
+--     targets       jsonb not null default '{}'::jsonb,
+--     created_at    timestamptz not null default now(),
+--     unique (owner_id, effective_from)
+--   );
+--   alter table targets_history enable row level security;
+--   create policy "owner only" on targets_history for all
+--     using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+--   create index targets_history_owner_effective_idx
+--     on targets_history (owner_id, effective_from desc);
+--
+--   -- Recommended once the half-hour grid and Dashboard are both in regular
+--   -- use — the Dashboard now scans a full financial year on every visit:
+--   create index if not exists tasks_owner_scheduled_date_idx
+--     on tasks (owner_id, scheduled_date);
+--   create index if not exists focus_sessions_owner_date_idx
+--     on focus_sessions (owner_id, date);
+--   create index if not exists invoices_owner_paid_at_idx
+--     on invoices (owner_id, paid_at) where status = 'paid';
+--
+--   -- Daily Finance, Bug Bounty Pipeline, Reward Vault, Learning Tracker,
+--   -- Release Stats: seven new tables, each a plain `create table` — see the
+--   -- corresponding statements further down in this file for the current,
+--   -- authoritative shape of each (project_status_log, finance_entries,
+--   -- bounty_cases, needs, courses, tracked_packages, metric_snapshots).
+--   -- Run those `create table` / `create index` / RLS statements directly
+--   -- against an existing database; they're additive and safe to run once.
+--
+--   alter table projects add column earned_override jsonb;
+--   alter table projects drop constraint projects_status_check;
+--   alter table projects add constraint projects_status_check
+--     check (status in ('idea','ontrack','review','risk','done','dropped'));
+--   alter table projects drop constraint projects_type_check;
+--   alter table projects add constraint projects_type_check check (type in
+--     ('client','internal','opensource','mobile','game','web','content','assess','bounty','freelance','institute'));
+--   alter table projects drop constraint projects_types_check;
+--   alter table projects add constraint projects_types_check check (types <@ array[
+--     'client','internal','opensource','mobile','game','web','content','assess','bounty','freelance','institute']::text[]);
+--
+--   alter table settings add column reward_vault jsonb not null default '{}'::jsonb;
 
 create extension if not exists "uuid-ossp";
 
@@ -64,16 +122,28 @@ create table projects (
   -- Primary type: always types[1]. Kept as its own column so the index and
   -- every single-type read keep working.
   type         text not null check (type in
-                 ('client','internal','opensource','mobile','game','web','content','assess','bounty')),
+                 ('client','internal','opensource','mobile','game','web','content','assess','bounty','freelance','institute')),
   -- Full type set — a project is often several things at once (an
   -- open-source repo that's also a web app; client work that's also an
   -- assessment). Order matters: types[1] is the primary.
   types        text[] not null default '{}'
-                 check (types <@ array['client','internal','opensource','mobile','game','web','content','assess','bounty']::text[]),
+                 check (types <@ array['client','internal','opensource','mobile','game','web','content','assess','bounty','freelance','institute']::text[]),
   client_id    uuid references clients(id) on delete set null,
+  -- 'dropped' is an explicit terminal state distinct from 'done', so the
+  -- Reward Vault can tell "finished, unlocks rewards" apart from
+  -- "abandoned, releases rewards" without overloading one status value.
   status       text not null default 'idea' check (status in
-                 ('idea','ontrack','review','risk','done')),
+                 ('idea','ontrack','review','risk','done','dropped')),
   description  text,
+  -- Per-project target ("Acme should get 15h/week"), separate from the
+  -- workspace-wide targets. Empty jsonb means "no target set" — the project
+  -- simply doesn't appear in the Dashboard's per-project section.
+  targets      jsonb not null default '{}'::jsonb,
+  -- The Reward Vault's substitute "paid" signal for a project with no real
+  -- invoice (internal tools, plugins). Null means not set. Always written
+  -- together with a required note and a project_status_log entry — see
+  -- markProjectEarnedOverride() in src/features/projects/actions.ts.
+  earned_override jsonb,
   created_at   timestamptz not null default now()
 );
 
@@ -145,10 +215,9 @@ create table invoices (
   check (project_id is not null or client_id is not null)
 );
 
--- ---------------------------------------------------------------------------
--- Meetings — client calls, kept next to the client rather than in a calendar
--- app, so the agenda, the minutes and the follow-up live with the work.
--- ---------------------------------------------------------------------------
+-- The Dashboard's year/month/week revenue figures filter paid invoices by
+-- owner + paid_at.
+create index invoices_owner_paid_at_idx on invoices(owner_id, paid_at) where status = 'paid';
 create table meetings (
   id            uuid primary key default uuid_generate_v4(),
   owner_id      uuid not null references auth.users(id) default auth.uid(),
@@ -192,6 +261,10 @@ create table tasks (
   -- Real length in minutes, in 30-minute steps. Takes precedence over
   -- duration_hours wherever both are present.
   duration_minutes int check (duration_minutes between 30 and 480 and duration_minutes % 30 = 0),
+  -- Dashboard category tag ("deep work" / "admin" / "learning"), defined in
+  -- Settings. Overrides the project's type in the 24-hour split when set;
+  -- null falls back to the project's type exactly as before this existed.
+  category         text,
   done             boolean not null default false,
   -- The date this task was picked as that day's ONE thing. A date rather
   -- than a boolean so yesterday's choice doesn't silently become today's.
@@ -201,6 +274,9 @@ create table tasks (
 
 create index tasks_schedule_idx on tasks(owner_id, scheduled_date, scheduled_hour);
 create unique index tasks_one_thing_idx on tasks(owner_id, focus_date) where focus_date is not null;
+-- The Dashboard scans a full financial year of tasks by owner + date on
+-- every visit; this is that query's index.
+create index tasks_owner_scheduled_date_idx on tasks(owner_id, scheduled_date);
 
 -- ---------------------------------------------------------------------------
 -- Focus sessions — recorded because "where did the day go" is unanswerable
@@ -216,7 +292,11 @@ create table focus_sessions (
   started_at       timestamptz not null default now(),
   minutes          int not null,           -- planned length
   completed_minutes int not null,          -- what actually happened
-  note             text
+  note             text,
+  -- Direct category override for a session not tied to a task (or one that
+  -- should be categorised differently from its task). Falls back to the
+  -- linked task's category, then the project's type, when null.
+  category         text
 );
 
 create index focus_sessions_date_idx on focus_sessions(owner_id, date);
@@ -231,12 +311,40 @@ create table settings (
   owner_id   uuid not null references auth.users(id) default auth.uid() unique,
   clocks     jsonb not null default '[]'::jsonb,   -- customisable clock widgets
   business   jsonb not null default '{}'::jsonb,   -- invoice letterhead + payment details
-  -- Weekly / monthly / yearly goals powering the Dashboard. jsonb for the
-  -- same reason as the rest of this row: adding a target is never a migration.
+  -- Deprecated: the app no longer writes to this column directly. Kept so an
+  -- existing row from before targets_history existed doesn't need a
+  -- migration; queries.ts computes the "current" targets from
+  -- targets_history at read time instead.
   targets    jsonb not null default '{}'::jsonb,
+  -- User-defined Dashboard categories ("deep work" / "admin" / "learning"),
+  -- as [{key, label, color}]. Empty by default: every task buckets by its
+  -- project's type until one is defined.
+  categories jsonb not null default '[]'::jsonb,
+  -- Reward Vault friction windows (cooldown/expiry/spend caps) — see
+  -- RewardVaultConfig in src/features/settings/types.ts. Empty jsonb falls
+  -- back to DEFAULT_REWARD_VAULT at read time.
+  reward_vault jsonb not null default '{}'::jsonb,
   code_root  text not null default '',             -- the only folder scaffolding may write to
   updated_at timestamptz not null default now()
 );
+
+-- ---------------------------------------------------------------------------
+-- Targets history — every save is a new dated version, never an edit in
+-- place, so "what was my target back in June" stays answerable even after
+-- the numbers have changed since. The version whose effective_from is the
+-- latest date not after a given day is the one that applied that day.
+-- ---------------------------------------------------------------------------
+create table targets_history (
+  id              text primary key,
+  owner_id        uuid not null references auth.users(id) default auth.uid(),
+  effective_from  date not null,
+  targets         jsonb not null default '{}'::jsonb,
+  created_at      timestamptz not null default now(),
+  unique (owner_id, effective_from)
+);
+
+create index targets_history_owner_effective_idx
+  on targets_history (owner_id, effective_from desc);
 
 -- ---------------------------------------------------------------------------
 -- Bug bounty submissions (bounty-type projects)
@@ -333,6 +441,165 @@ create table alert_states (
 create index alert_states_owner_idx on alert_states(owner_id);
 
 -- ---------------------------------------------------------------------------
+-- Project audit log — append-only. Never updated or deleted; see
+-- src/features/projects/audit-log.ts, the only code that writes to it.
+-- ---------------------------------------------------------------------------
+create table project_status_log (
+  id           text primary key,
+  owner_id     uuid not null references auth.users(id) default auth.uid(),
+  project_id   uuid not null references projects(id) on delete cascade,
+  project_name text not null,             -- denormalised: survives the project being deleted
+  field_changed text not null check (field_changed in ('status', 'earned')),
+  from_value   text not null,
+  to_value     text not null,
+  changed_at   timestamptz not null default now(),
+  note         text
+);
+
+create index project_status_log_owner_idx on project_status_log(owner_id, changed_at desc);
+
+-- ---------------------------------------------------------------------------
+-- Daily Finance — the day-to-day cash ledger. Income rows are only ever
+-- written by another feature's own action (an invoice marked paid, a bounty
+-- reaching paid); see postIncomeEntry() in
+-- src/features/daily-finance/actions.ts. There is no form anywhere that
+-- lets a person type in income directly.
+-- ---------------------------------------------------------------------------
+create table finance_entries (
+  id                 text primary key,
+  owner_id           uuid not null references auth.users(id) default auth.uid(),
+  date               date not null,
+  type               text not null check (type in ('income', 'expense')),
+  category           text not null,
+  amount             numeric not null check (amount >= 0), -- always positive; sign comes from `type`
+  note               text,
+  source             text not null check (source in ('manual', 'invoice_payment', 'bounty_payout', 'reward_vault')),
+  created_at         timestamptz not null default now(),
+  linked_project_id  uuid references projects(id) on delete set null,
+  linked_invoice_id  uuid references invoices(id) on delete set null,
+  linked_bounty_id   text,  -- references bounty_cases(id); text because bounty_cases.id isn't a uuid
+  linked_need_id     text   -- references needs(id); same reason
+);
+
+create index finance_entries_owner_date_idx on finance_entries(owner_id, date desc);
+-- Guards the idempotency check in postIncomeEntry()/postRewardVaultExpense():
+-- at most one auto-posted entry per source event.
+create unique index finance_entries_invoice_once_idx on finance_entries(linked_invoice_id) where linked_invoice_id is not null;
+create unique index finance_entries_bounty_once_idx on finance_entries(linked_bounty_id) where linked_bounty_id is not null;
+create unique index finance_entries_need_once_idx on finance_entries(linked_need_id) where linked_need_id is not null;
+
+-- ---------------------------------------------------------------------------
+-- Bug Bounty Pipeline — a standalone kanban, deliberately not shaped like a
+-- Project (no client, no invoice). Distinct from the older, lighter
+-- `bounty_submissions` still used on a bounty-type project's own
+-- Submissions tab; this is the richer, owner-level pipeline with its own
+-- payout lifecycle.
+-- ---------------------------------------------------------------------------
+create table bounty_cases (
+  id                text primary key,
+  owner_id          uuid not null references auth.users(id) default auth.uid(),
+  title             text not null,
+  program_name      text not null,
+  severity          text not null check (severity in ('critical', 'high', 'medium', 'low')),
+  status            text not null default 'submitted'
+                      check (status in ('submitted', 'triaged', 'accepted', 'paid', 'rejected', 'duplicate')),
+  currency          text not null default 'INR',
+  estimated_payout  numeric,
+  confirmed_payout  numeric,
+  paid_amount       numeric,
+  submitted_at      date not null,
+  triaged_at        date,
+  accepted_at       date,
+  paid_at           date,
+  created_at        timestamptz not null default now()
+);
+
+create index bounty_cases_owner_status_idx on bounty_cases(owner_id, status);
+
+-- ---------------------------------------------------------------------------
+-- Reward Vault — Needs and their state machine. `status`, `unlocked_at` and
+-- `purchased_at` are written only by reconcileNeeds()/markPurchased() in
+-- src/features/reward-vault/{queries,actions}.ts — never by a direct edit
+-- from the UI.
+-- ---------------------------------------------------------------------------
+create table needs (
+  id                text primary key,
+  owner_id          uuid not null references auth.users(id) default auth.uid(),
+  name              text not null,
+  category          text not null,
+  emoji_icon        text not null default '🎁',
+  price             numeric not null check (price > 0),
+  source_type       text not null check (source_type in ('project', 'course')),
+  linked_source_id  text,  -- a projects(id) uuid or a courses(id) text, depending on source_type
+  status            text not null default 'in_progress'
+                      check (status in ('in_progress', 'cooling_off', 'ready', 'purchased', 'released', 'expired')),
+  progress_pct      integer not null default 0 check (progress_pct between 0 and 100),
+  unlocked_at       timestamptz,
+  cooldown_ends_at  timestamptz,
+  purchased_at      date,
+  expires_at        timestamptz,
+  created_at        timestamptz not null default now(),
+  linked_at         timestamptz not null default now(),
+  notify_pending    text check (notify_pending in ('cooldown_started', 'ready'))
+);
+
+create index needs_owner_status_idx on needs(owner_id, status);
+-- Rule 4: at most one *active* (in_progress/cooling_off) need per source.
+-- Enforced here, not just in application code, so a race between two
+-- requests can't create two.
+create unique index needs_one_active_per_source_idx
+  on needs(owner_id, source_type, linked_source_id)
+  where status in ('in_progress', 'cooling_off') and linked_source_id is not null;
+
+-- ---------------------------------------------------------------------------
+-- Learning Tracker
+-- ---------------------------------------------------------------------------
+create table courses (
+  id                 text primary key,
+  owner_id           uuid not null references auth.users(id) default auth.uid(),
+  title              text not null,
+  provider           text not null,
+  topic_tags         jsonb not null default '[]'::jsonb,
+  total_lessons      integer not null check (total_lessons > 0),
+  completed_lessons  integer not null default 0 check (completed_lessons >= 0),
+  completed_at       date,
+  created_at         timestamptz not null default now()
+);
+
+create index courses_owner_idx on courses(owner_id);
+
+-- ---------------------------------------------------------------------------
+-- Release Stats — packages tracked, and the snapshot history behind each
+-- card's sparkline and week-over-week delta.
+-- ---------------------------------------------------------------------------
+create table tracked_packages (
+  id                    text primary key,
+  owner_id              uuid not null references auth.users(id) default auth.uid(),
+  name                  text not null,
+  description           text not null default '',
+  emoji_icon            text not null default '📦',
+  platform              text not null check (platform in ('npm', 'pypi', 'github', 'chrome_web_store')),
+  platform_identifier   text not null,
+  family                text,
+  created_at            timestamptz not null default now()
+);
+
+create table metric_snapshots (
+  id             text primary key,
+  owner_id       uuid not null references auth.users(id) default auth.uid(),
+  package_id     text not null references tracked_packages(id) on delete cascade,
+  captured_at    timestamptz not null default now(),
+  stars          integer,
+  downloads_30d  integer,
+  installs       integer,
+  rating         numeric,
+  review_count   integer,
+  fetch_ok       boolean not null default true
+);
+
+create index metric_snapshots_package_idx on metric_snapshots(package_id, captured_at desc);
+
+-- ---------------------------------------------------------------------------
 -- Row Level Security — single-tenant today, ready for a team later.
 -- Everything scopes to owner_id, either directly or via its parent project.
 -- ---------------------------------------------------------------------------
@@ -348,6 +615,14 @@ alter table notes enable row level security;
 alter table tasks enable row level security;
 alter table integrations enable row level security;
 alter table alert_states enable row level security;
+alter table targets_history enable row level security;
+alter table project_status_log enable row level security;
+alter table finance_entries enable row level security;
+alter table bounty_cases enable row level security;
+alter table needs enable row level security;
+alter table courses enable row level security;
+alter table tracked_packages enable row level security;
+alter table metric_snapshots enable row level security;
 
 create policy "owner full access" on clients for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on projects for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
@@ -355,6 +630,14 @@ create policy "owner full access" on notes for all using (owner_id = auth.uid())
 create policy "owner full access" on tasks for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on integrations for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on alert_states for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on targets_history for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on project_status_log for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on finance_entries for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on bounty_cases for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on needs for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on courses for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on tracked_packages for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on metric_snapshots for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
 -- Child tables scope through their project's owner
 create policy "owner via project" on project_phases for all

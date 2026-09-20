@@ -172,6 +172,16 @@ export async function toggleTaskDone(id: string, done: boolean): Promise<void> {
   revalidateTaskSurfaces(updated?.project_id ?? null);
 }
 
+/** Tag or untag a task with a custom Dashboard category — overrides its
+ *  project's type in the 24-hour split. An empty string clears the tag,
+ *  falling back to the project's type exactly as before this existed. */
+export async function setTaskCategory(id: string, category: string): Promise<void> {
+  await requireOwner();
+  const updated = await table<Task>('tasks').update(id, { category: category || null });
+  revalidateTaskSurfaces(updated?.project_id ?? null);
+  revalidatePath('/dashboard');
+}
+
 export async function deleteTask(id: string): Promise<void> {
   await requireOwner();
   const existing = await table<Task>('tasks').find(id);

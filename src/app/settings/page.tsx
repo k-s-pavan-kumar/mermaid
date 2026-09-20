@@ -1,7 +1,12 @@
 import { redirect } from 'next/navigation';
 import { getSessionEmail } from '@/lib/auth/session';
-import { getSettings } from '@/features/settings/queries';
-import { addClock, removeClock, setHomeClock, moveClock, updateBusiness, updateTargets } from '@/features/settings/actions';
+import { getSettings, getTargetsHistory } from '@/features/settings/queries';
+import {
+  addClock, removeClock, setHomeClock, moveClock, updateBusiness,
+  addTargetsVersion, deleteTargetsVersion, addCategory, removeCategory,
+} from '@/features/settings/actions';
+import { CATEGORY_COLOR_CHOICES } from '@/features/settings/types';
+import { todayIso } from '@/lib/tz/today';
 import { Shell } from '@/components/Shell';
 import { SubmitButton } from '@/components/SubmitButton';
 import { ActionButton } from '@/components/ActionButton';
@@ -12,11 +17,27 @@ const MONTHS = [
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
 
+function fmtTargetsSummary(t: { weekly_focus_hours: number; monthly_revenue: number; yearly_revenue: number; currency: string }): string {
+  const bits: string[] = [];
+  if (t.weekly_focus_hours > 0) bits.push(`${t.weekly_focus_hours}h/week`);
+  if (t.monthly_revenue > 0) bits.push(`${t.currency} ${t.monthly_revenue.toLocaleString('en-IN')}/mo`);
+  if (t.yearly_revenue > 0) bits.push(`${t.currency} ${t.yearly_revenue.toLocaleString('en-IN')}/yr`);
+  return bits.length ? bits.join(' · ') : 'no numeric targets';
+}
+
 export default async function SettingsPage() {
   const email = await getSessionEmail();
   if (!email) redirect('/login');
 
-  const settings = await getSettings(email);
+  const [settings, targetsHistory] = await Promise.all([
+    getSettings(email),
+    getTargetsHistory(email),
+  ]);
+  const today = todayIso();
+  // The version currently in effect — same rule the Dashboard uses — so the
+  // "current" badge in the history list matches what the Dashboard is
+  // actually reading right now.
+  const currentVersionId = targetsHistory.find((v) => v.effective_from <= today)?.id;
 
   return (
     <Shell active="settings" title="Settings" crumb="Workspace setup">
@@ -65,7 +86,44 @@ export default async function SettingsPage() {
         disappears from the Dashboard rather than showing an empty bar.
       </p>
 
-      <form action={updateTargets} className="card form-grid" style={{ maxWidth: 620 }}>
+      {targetsHistory.length > 0 && (
+        <div className="card" style={{ maxWidth: 620, marginBottom: 16 }}>
+          <h3 style={{ marginBottom: 10 }}>History</h3>
+          <div className="targets-history-list">
+            {targetsHistory.map((v) => (
+              <div key={v.id} className="tv-row">
+                <span className="tv-date">{v.effective_from}</span>
+                <span className="tv-summary">{fmtTargetsSummary(v.targets)}</span>
+                {v.id === currentVersionId && <span className="tv-current">current</span>}
+                <ActionButton
+                  action={async () => { 'use server'; await deleteTargetsVersion(v.id); }}
+                  className="btn-link"
+                  pendingLabel="Removing…"
+                >
+                  Remove
+                </ActionButton>
+              </div>
+            ))}
+          </div>
+          <p className="text-muted" style={{ fontSize: 11.5, margin: 0 }}>
+            The Dashboard judges each week, month and year against whichever version
+            was effective at the time — so a target you set for June still describes
+            June, even after you&apos;ve changed it since.
+          </p>
+        </div>
+      )}
+
+      <form action={addTargetsVersion} className="card form-grid" style={{ maxWidth: 620 }}>
+        <div>
+          <label className="field-label" htmlFor="effective_from">Effective from</label>
+          <input id="effective_from" name="effective_from" type="date" required
+            defaultValue={today} max={today} style={{ width: '100%' }} />
+          <p className="text-muted" style={{ fontSize: 11.5, margin: '6px 0 0' }}>
+            Backdate this to correct what your target actually was on an earlier date,
+            or leave it as today to start a new target going forward.
+          </p>
+        </div>
+
         <div className="field-group-label">Weekly</div>
         <div className="grid-2-eq">
           <div>
@@ -143,8 +201,55 @@ export default async function SettingsPage() {
           target. Invoiced-but-unpaid is shown beside it on the Dashboard, never folded in.
         </p>
 
-        <SubmitButton className="btn" pendingLabel="Saving…" style={{ width: 'fit-content' }}>Save targets</SubmitButton>
+        <SubmitButton className="btn" pendingLabel="Saving…" style={{ width: 'fit-content' }}>Save as a new version</SubmitButton>
       </form>
+
+      <div className="section-title"><h3>Categories</h3></div>
+      <p className="text-muted text-sm" style={{ marginTop: -4 }}>
+        An alternative to bucketing the Dashboard&apos;s 24-hour pie by project type —
+        define your own buckets (&ldquo;deep work&rdquo;, &ldquo;admin&rdquo;, &ldquo;learning&rdquo;) and tag
+        any task with one from the Today board. A tagged task always wins over its
+        project&apos;s type.
+      </p>
+
+      <div className="card" style={{ maxWidth: 620 }}>
+        {settings.categories.length > 0 ? (
+          <div className="category-chip-list">
+            {settings.categories.map((c) => (
+              <span key={c.key} className="category-chip">
+                <span className="sw" style={{ background: c.color }} />
+                {c.label}
+                <ActionButton
+                  action={async () => { 'use server'; await removeCategory(c.key); }}
+                  pendingLabel="…"
+                  aria-label={`Remove ${c.label}`}
+                  title="Remove"
+                >
+                  ×
+                </ActionButton>
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-muted" style={{ fontSize: 12.5, marginTop: 0 }}>
+            No custom categories yet — every task buckets by its project&apos;s type.
+          </p>
+        )}
+
+        <form action={addCategory} className="form-row" style={{ gap: 10, alignItems: 'center' }}>
+          <input name="label" placeholder="e.g. Deep work" required maxLength={40} style={{ maxWidth: 200 }} />
+          <span className="color-swatch-row">
+            {CATEGORY_COLOR_CHOICES.map((color, i) => (
+              <label key={color}>
+                <input type="radio" name="color" value={color} defaultChecked={i === 0} style={{ display: 'none' }}
+                  className="color-radio" />
+                <span className="color-swatch" style={{ background: color }} />
+              </label>
+            ))}
+          </span>
+          <SubmitButton className="btn-inline" pendingLabel="Adding…">Add category</SubmitButton>
+        </form>
+      </div>
 
       <div className="section-title"><h3>Billing profile</h3></div>
       <p className="text-muted text-sm" style={{ marginTop: -4 }}>

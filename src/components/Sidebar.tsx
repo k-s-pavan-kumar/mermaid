@@ -10,6 +10,11 @@ const ICONS: Record<string, React.ReactNode> = {
   settings: (<><circle cx="12" cy="12" r="3" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M5 5l2 2M17 17l2 2M19 5l-2 2M7 17l-2 2" /></>),
   notes: (<><path d="M14 3v5a1 1 0 001 1h5" /><path d="M6 3h8l6 6v10a2 2 0 01-2 2H6a2 2 0 01-2-2V5a2 2 0 012-2z" /><path d="M8 13h8M8 17h5" /></>),
   alerts: (<><path d="M18 8a6 6 0 10-12 0c0 7-3 8-3 8h18s-3-1-3-8" /><path d="M13.7 21a2 2 0 01-3.4 0" /></>),
+  'daily-finance': (<><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M3 10h18" /><circle cx="8" cy="14.5" r="1.4" /></>),
+  'bounty-pipeline': (<><path d="M12 2l2.4 5.5L20 8.3l-4 4.1L17 18l-5-2.8L7 18l1-5.6-4-4.1 5.6-.8z" /></>),
+  'reward-vault': (<><rect x="4" y="9" width="16" height="11" rx="2" /><path d="M8 9V6a4 4 0 018 0v3" /></>),
+  'learning-tracker': (<><path d="M4 6l8-3 8 3-8 3-8-3z" /><path d="M4 6v7c2 1.5 12 1.5 16 0V6" /></>),
+  'release-stats': (<><path d="M4 19V10M10 19V4M16 19v-7M4 19h16" /></>),
 };
 
 const LINKS = [
@@ -20,6 +25,18 @@ const LINKS = [
   { href: '/clients', label: 'Clients', key: 'clients', hint: 'g c' },
   { href: '/billing', label: 'Billing', key: 'billing', hint: 'g b' },
   { href: '/notes', label: 'Notes & SOPs', key: 'notes', hint: 'g n' },
+];
+
+/** Personal-ledger and side-project features — kept in their own nav group
+ *  and off the Dashboard's main view, reached in one click but never
+ *  competing with it for attention. See Dashboard's small "Elsewhere"
+ *  strip for the equivalent non-distracting summary. */
+const PERSONAL_LINKS = [
+  { href: '/daily-finance', label: 'Daily Finance', key: 'daily-finance' },
+  { href: '/bounty-pipeline', label: 'Bug Bounty Pipeline', key: 'bounty-pipeline' },
+  { href: '/reward-vault', label: 'Reward Vault', key: 'reward-vault' },
+  { href: '/learning-tracker', label: 'Learning Tracker', key: 'learning-tracker' },
+  { href: '/release-stats', label: 'Release Stats', key: 'release-stats' },
 ];
 
 export async function Sidebar({ active, alertCount = 0 }: { active?: string; alertCount?: number }) {
@@ -46,6 +63,16 @@ export async function Sidebar({ active, alertCount = 0 }: { active?: string; ale
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">{ICONS[l.key]}</svg>
             <span style={{ flex: 1 }}>{l.label}</span>
             <kbd className="kbd nav-kbd">{l.hint}</kbd>
+          </a>
+        ))}
+      </nav>
+
+      <div className="nav-label">Personal</div>
+      <nav className="nav">
+        {PERSONAL_LINKS.map((l) => (
+          <a key={l.href} href={l.href} className={`nav-item${active === l.key ? ' active' : ''}`}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">{ICONS[l.key]}</svg>
+            <span style={{ flex: 1 }}>{l.label}</span>
           </a>
         ))}
       </nav>

@@ -3,8 +3,8 @@
 import { revalidatePath } from 'next/cache';
 import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
-import { getSettings } from './queries';
-import type { ClockWidget, WorkspaceSettings } from './types';
+import { getSettings, getTargetsHistory } from './queries';
+import type { ClockWidget, WorkspaceSettings, Targets, TargetsVersion } from './types';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
@@ -16,7 +16,16 @@ async function requireOwner(): Promise<string> {
 async function save(ownerId: string, patch: Partial<WorkspaceSettings>): Promise<void> {
   const current = await getSettings(ownerId);
   const existing = await table<WorkspaceSettings>('settings').find(current.id);
-  const next = { ...current, ...patch };
+  // `targets` on WorkspaceSettings is a computed snapshot (see
+  // queries.ts:pickTargets), not a stored field — targets_history is the
+  // source of truth, so it's dropped here rather than written back onto
+  // the settings row on every unrelated save.
+  // `targets` on WorkspaceSettings is a read-time computed snapshot (see
+  // queries.ts:pickTargets), not a real stored field — targets_history is
+  // the source of truth. Writing it back here is harmless (getSettings
+  // recomputes it from history on every read and ignores whatever's on the
+  // row), so it's simplest to just carry it along rather than strip it.
+  const next: WorkspaceSettings = { ...current, ...patch };
 
   if (existing) await table<WorkspaceSettings>('settings').update(current.id, next);
   else await table<WorkspaceSettings>('settings').insert(next);
@@ -75,15 +84,23 @@ export async function moveClock(id: string, direction: -1 | 1): Promise<void> {
 }
 
 /**
- * Save weekly / monthly / yearly targets.
+ * Add a new targets version, effective from a given date.
+ *
+ * This never edits a version in place — every save is a new row in
+ * `targets_history`, which is what makes "what was my target back in June"
+ * answerable later. Saving twice for the *same* date overwrites just that
+ * date's version (so fixing a typo doesn't spam the history), but changing
+ * the date always creates a new one.
  *
  * Every numeric field floors at 0 and 0 means "not tracking this", which is
  * what lets the Dashboard hide a ring instead of showing a meaningless
  * 0-of-0 progress bar.
  */
-export async function updateTargets(formData: FormData): Promise<void> {
+export async function addTargetsVersion(formData: FormData): Promise<void> {
   const owner = await requireOwner();
-  const current = await getSettings(owner);
+
+  const effectiveFrom = String(formData.get('effective_from') ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom)) return;
 
   const num = (k: string, max = 1_000_000_000): number => {
     const v = Number(formData.get(k) ?? 0);
@@ -91,22 +108,84 @@ export async function updateTargets(formData: FormData): Promise<void> {
     return Math.min(max, v);
   };
 
-  await save(owner, {
-    targets: {
-      ...current.targets,
-      weekly_focus_hours: num('weekly_focus_hours', 7 * 24),
-      weekly_tasks: num('weekly_tasks', 1000),
-      weekly_active_days: Math.min(7, Math.round(num('weekly_active_days', 7))),
-      monthly_focus_hours: num('monthly_focus_hours', 31 * 24),
-      monthly_tasks: num('monthly_tasks', 5000),
-      monthly_revenue: num('monthly_revenue'),
-      yearly_revenue: num('yearly_revenue'),
-      currency: String(formData.get('currency') ?? '').trim().toUpperCase().slice(0, 4) || 'INR',
-      fiscal_year_start_month: Math.min(12, Math.max(1, Math.round(num('fiscal_year_start_month', 12)) || 1)),
-    },
-  });
+  const targets: Targets = {
+    weekly_focus_hours: num('weekly_focus_hours', 7 * 24),
+    weekly_tasks: num('weekly_tasks', 1000),
+    weekly_active_days: Math.min(7, Math.round(num('weekly_active_days', 7))),
+    monthly_focus_hours: num('monthly_focus_hours', 31 * 24),
+    monthly_tasks: num('monthly_tasks', 5000),
+    monthly_revenue: num('monthly_revenue'),
+    yearly_revenue: num('yearly_revenue'),
+    currency: String(formData.get('currency') ?? '').trim().toUpperCase().slice(0, 4) || 'INR',
+    fiscal_year_start_month: Math.min(12, Math.max(1, Math.round(num('fiscal_year_start_month', 12)) || 1)),
+  };
+
+  const history = await getTargetsHistory(owner);
+  const existing = history.find((v) => v.effective_from === effectiveFrom);
+
+  if (existing) {
+    await table<TargetsVersion>('targets_history').update(existing.id, { targets });
+  } else {
+    await table<TargetsVersion>('targets_history').insert({
+      id: `tv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      owner_id: owner,
+      effective_from: effectiveFrom,
+      targets,
+      created_at: new Date().toISOString(),
+    });
+  }
 
   revalidatePath('/dashboard');
+  revalidatePath('/settings');
+}
+
+export async function deleteTargetsVersion(id: string): Promise<void> {
+  await requireOwner();
+  await table<TargetsVersion>('targets_history').remove(id);
+  revalidatePath('/dashboard');
+  revalidatePath('/settings');
+}
+
+/** Define a new category for the Dashboard's 24-hour split. */
+export async function addCategory(formData: FormData): Promise<void> {
+  const owner = await requireOwner();
+  const label = String(formData.get('label') ?? '').trim();
+  const color = String(formData.get('color') ?? '').trim() || '#5F3DEB';
+  if (!label) return;
+
+  const key = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || `cat-${Date.now()}`;
+
+  const { categories } = await getSettings(owner);
+  if (categories.some((c) => c.key === key)) return; // same label already exists
+
+  await save(owner, { categories: [...categories, { key, label, color }] });
+}
+
+export async function removeCategory(key: string): Promise<void> {
+  const owner = await requireOwner();
+  const { categories } = await getSettings(owner);
+  await save(owner, { categories: categories.filter((c) => c.key !== key) });
+  // Tasks that referenced this category keep their (now-orphaned) tag rather
+  // than being silently rewritten; the Dashboard falls back to a generic
+  // label for any key it doesn't recognise, so nothing breaks.
+}
+
+export async function updateRewardVaultConfig(formData: FormData): Promise<void> {
+  const owner = await requireOwner();
+  const num = (k: string, fallback: number, max: number): number => {
+    const v = Number(formData.get(k) ?? fallback);
+    return Number.isFinite(v) && v >= 0 ? Math.min(max, v) : fallback;
+  };
+  await save(owner, {
+    reward_vault: {
+      cooldown_hours: num('cooldown_hours', 48, 24 * 30),
+      expiry_days: Math.round(num('expiry_days', 14, 365)),
+      spend_cap_pct: Math.min(1, num('spend_cap_pct', 0.5, 1)),
+      course_cap: num('course_cap', 10_000, 10_000_000),
+      auto_post_purchases: formData.get('auto_post_purchases') === 'on',
+    },
+  });
+  revalidatePath('/reward-vault');
 }
 
 export async function updateBusiness(formData: FormData): Promise<void> {

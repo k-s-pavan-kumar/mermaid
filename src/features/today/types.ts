@@ -20,6 +20,15 @@ export interface Task {
    * `durationMinutes()` in ./time.ts rather than reading either directly.
    */
   duration_minutes?: number | null;
+  /**
+   * Free-form category key for the Dashboard's 24-hour split — "deep-work",
+   * "admin", "learning", whatever the person defined in Settings. Optional
+   * and takes priority over the project's type when set: a task tagged
+   * "admin" on a client project shows as admin time, not client time.
+   * Absent/null falls back to the project's type, exactly as before this
+   * existed.
+   */
+  category?: string | null;
   done: boolean;
   /**
    * The date this task was picked as the day's ONE thing. At most one task
@@ -45,4 +54,11 @@ export interface FocusSession {
   minutes: number;       // planned length
   completed_minutes: number;
   note: string | null;
+  /**
+   * Direct category tag for a session not tied to a task (or where the
+   * session should be categorised differently from its task). When absent,
+   * the Dashboard falls back to the linked task's category, then to the
+   * project's type.
+   */
+  category?: string | null;
 }

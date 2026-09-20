@@ -64,7 +64,7 @@ function averageOf(days: DaySpend[]): Record<string, number> {
 export function DashboardClient({ data }: { data: DashboardData }) {
   const [scope, setScope] = useState<Scope>('today');
   const [hovered, setHovered] = useState<string | null>(null);
-  const { targets, week, month, year, categories } = data;
+  const { targets, week, month, year, categories, streaks, projectProgress } = data;
 
   // Days that actually have something in them — averaging a typical day
   // across a month that hasn't happened yet would make every day look empty.
@@ -103,9 +103,9 @@ export function DashboardClient({ data }: { data: DashboardData }) {
   }, [data.months]);
 
   const anyTargets =
-    targets.weekly_focus_hours > 0 || targets.weekly_tasks > 0 || targets.weekly_active_days > 0 ||
-    targets.monthly_focus_hours > 0 || targets.monthly_tasks > 0 || targets.monthly_revenue > 0 ||
-    targets.yearly_revenue > 0;
+    week.targets.weekly_focus_hours > 0 || week.targets.weekly_tasks > 0 || week.targets.weekly_active_days > 0 ||
+    month.targets.monthly_focus_hours > 0 || month.targets.monthly_tasks > 0 || month.targets.monthly_revenue > 0 ||
+    year.targets.yearly_revenue > 0;
 
   const cur = targets.currency || 'INR';
   const fmtMoney = (n: number) => money(n, cur);
@@ -124,6 +124,36 @@ export function DashboardClient({ data }: { data: DashboardData }) {
         </div>
       )}
 
+      {/* ---------------- Streaks ---------------- */}
+      <div className="card streak-card">
+        <div className="streak-item">
+          <span className="streak-flame" aria-hidden>
+            {streaks.current > 0 ? '🔥' : '·'}
+          </span>
+          <div>
+            <div className="streak-num">{streaks.current}</div>
+            <div className="streak-lbl">day{streaks.current === 1 ? '' : 's'} in a row right now</div>
+          </div>
+        </div>
+        <div className="streak-divider" />
+        <div className="streak-item">
+          <span className="streak-flame" aria-hidden>🏆</span>
+          <div>
+            <div className="streak-num">{streaks.longest}</div>
+            <div className="streak-lbl">
+              longest run, last {streaks.windowDays} days
+              {streaks.longestStart && streaks.longestEnd && (
+                <> · {prettyDate(streaks.longestStart)} – {prettyDate(streaks.longestEnd)}</>
+              )}
+            </div>
+          </div>
+        </div>
+        <p className="text-muted streak-note">
+          A day counts if a task was finished, a focus block ran, or you had a meeting —
+          the same forgiving rule the weekly &ldquo;active days&rdquo; target uses.
+        </p>
+      </div>
+
       {/* ---------------- Year financial goal ---------------- */}
       <div className="section-title">
         <h3>Financial year {year.label}</h3>
@@ -137,13 +167,13 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           <div>
             <div className="yg-label">Paid this year</div>
             <div className="yg-value">{fmtMoney(year.revenue.paid)}</div>
-            {targets.yearly_revenue > 0 && (
+            {year.targets.yearly_revenue > 0 && (
               <div className="yg-sub">
-                of {fmtMoney(targets.yearly_revenue)} goal ·{' '}
+                of {fmtMoney(year.targets.yearly_revenue)} goal ·{' '}
                 {(() => {
-                  const pct = year.revenue.paid / targets.yearly_revenue;
+                  const pct = year.revenue.paid / year.targets.yearly_revenue;
                   const gap = pct - year.elapsed;
-                  if (year.revenue.paid >= targets.yearly_revenue) return <b className="yg-ahead">goal met</b>;
+                  if (year.revenue.paid >= year.targets.yearly_revenue) return <b className="yg-ahead">goal met</b>;
                   if (gap >= 0.02) return <b className="yg-ahead">ahead of pace</b>;
                   if (gap <= -0.05) return <b className="yg-behind">behind pace</b>;
                   return <b>on pace</b>;
@@ -172,12 +202,12 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           </div>
         </div>
 
-        {targets.yearly_revenue > 0 && (
+        {year.targets.yearly_revenue > 0 && (
           <div className="yg-bar-wrap">
             <TargetBar
               label="Paid against the year's goal"
               value={year.revenue.paid}
-              target={targets.yearly_revenue}
+              target={year.targets.yearly_revenue}
               pace={year.elapsed}
               format={fmtMoney}
             />
@@ -198,14 +228,14 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               {week.daysElapsed} of {week.daysTotal} days
             </span>
           </h3>
-          {targets.weekly_focus_hours > 0 && (
-            <TargetBar label="Focused hours" value={week.focusHours} target={targets.weekly_focus_hours} unit="h" pace={week.elapsed} />
+          {week.targets.weekly_focus_hours > 0 && (
+            <TargetBar label="Focused hours" value={week.focusHours} target={week.targets.weekly_focus_hours} unit="h" pace={week.elapsed} />
           )}
-          {targets.weekly_tasks > 0 && (
-            <TargetBar label="Tasks completed" value={week.tasksDone} target={targets.weekly_tasks} pace={week.elapsed} format={(n) => String(Math.round(n))} />
+          {week.targets.weekly_tasks > 0 && (
+            <TargetBar label="Tasks completed" value={week.tasksDone} target={week.targets.weekly_tasks} pace={week.elapsed} format={(n) => String(Math.round(n))} />
           )}
-          {targets.weekly_active_days > 0 && (
-            <TargetBar label="Days something moved" value={week.activeDays} target={targets.weekly_active_days} pace={week.elapsed} format={(n) => String(Math.round(n))} />
+          {week.targets.weekly_active_days > 0 && (
+            <TargetBar label="Days something moved" value={week.activeDays} target={week.targets.weekly_active_days} pace={week.elapsed} format={(n) => String(Math.round(n))} />
           )}
           <div className="mini-stats">
             <span><b>{week.focusHours}h</b> focused</span>
@@ -221,14 +251,14 @@ export function DashboardClient({ data }: { data: DashboardData }) {
               {month.daysElapsed} of {month.daysTotal} days
             </span>
           </h3>
-          {targets.monthly_focus_hours > 0 && (
-            <TargetBar label="Focused hours" value={month.focusHours} target={targets.monthly_focus_hours} unit="h" pace={month.elapsed} />
+          {month.targets.monthly_focus_hours > 0 && (
+            <TargetBar label="Focused hours" value={month.focusHours} target={month.targets.monthly_focus_hours} unit="h" pace={month.elapsed} />
           )}
-          {targets.monthly_tasks > 0 && (
-            <TargetBar label="Tasks completed" value={month.tasksDone} target={targets.monthly_tasks} pace={month.elapsed} format={(n) => String(Math.round(n))} />
+          {month.targets.monthly_tasks > 0 && (
+            <TargetBar label="Tasks completed" value={month.tasksDone} target={month.targets.monthly_tasks} pace={month.elapsed} format={(n) => String(Math.round(n))} />
           )}
-          {targets.monthly_revenue > 0 && (
-            <TargetBar label="Paid this month" value={month.revenue.paid} target={targets.monthly_revenue} pace={month.elapsed} format={fmtMoney} />
+          {month.targets.monthly_revenue > 0 && (
+            <TargetBar label="Paid this month" value={month.revenue.paid} target={month.targets.monthly_revenue} pace={month.elapsed} format={fmtMoney} />
           )}
           <div className="mini-stats">
             <span><b>{month.focusHours}h</b> focused</span>
@@ -237,6 +267,32 @@ export function DashboardClient({ data }: { data: DashboardData }) {
           </div>
         </div>
       </div>
+
+      {/* ---------------- Per-project targets ---------------- */}
+      {projectProgress.length > 0 && (
+        <>
+          <div className="section-title"><h3>Project targets</h3></div>
+          <div className="card">
+            {projectProgress.map((p) => (
+              <div key={p.projectId} className="proj-target-row">
+                <a href={`/projects/${p.projectId}`} className="proj-target-name">{p.projectName}</a>
+                <div className="proj-target-bars">
+                  {p.targets.weekly_focus_hours > 0 && (
+                    <TargetBar label="This week" value={p.weekFocusHours} target={p.targets.weekly_focus_hours} unit="h" />
+                  )}
+                  {p.targets.monthly_focus_hours > 0 && (
+                    <TargetBar label="This month" value={p.monthFocusHours} target={p.targets.monthly_focus_hours} unit="h" />
+                  )}
+                </div>
+              </div>
+            ))}
+            <p className="text-muted" style={{ fontSize: 11.5, margin: '10px 0 0' }}>
+              Set from each project&apos;s Settings tab. Only projects with a target
+              show up here.
+            </p>
+          </div>
+        </>
+      )}
 
       {/* ---------------- 24-hour pie ---------------- */}
       <div className="section-title">
@@ -278,7 +334,8 @@ export function DashboardClient({ data }: { data: DashboardData }) {
             Built from focus sessions, scheduled blocks and meetings you already record.
             A timed block and the plan it came from are counted once, not twice. Anything
             left over is simply unaccounted — sleep, meals, everything you were never
-            going to put on a timebox.
+            going to put on a timebox. Tag a task with a category in Settings to have it
+            show up here as something other than its project&apos;s type.
           </p>
         </div>
       </div>

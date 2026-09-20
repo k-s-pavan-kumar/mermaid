@@ -58,6 +58,7 @@ function dumpDateLabel(iso: string, realToday: string): string {
 }
 
 interface ProjectRef { id: string; name: string; type: string }
+interface CategoryRef { key: string; label: string; color: string }
 
 interface Props {
   date: string;
@@ -70,6 +71,9 @@ interface Props {
   stalled: { id: string; name: string; days: number }[];
   focusMinutesToday: number;
   projects: ProjectRef[];
+  /** User-defined categories from Settings — empty means nobody's defined
+   *  any yet, in which case the category picker doesn't render at all. */
+  categories: CategoryRef[];
   addTask: (formData: FormData) => Promise<void>;
   scheduleTask: (id: string, date: string, hour: number, minute?: number) => Promise<void>;
   resizeTask: (id: string, durationMinutes: number) => Promise<void>;
@@ -79,6 +83,7 @@ interface Props {
   moveTaskToToday: (id: string, todayDate: string) => Promise<void>;
   moveAllOverdueToToday: (todayDate: string) => Promise<void>;
   setOneThing: (taskId: string, date: string) => Promise<void>;
+  setTaskCategory: (id: string, category: string) => Promise<void>;
   logFocusSession: (input: { minutes: number; completedMinutes: number; taskId?: string | null; projectId?: string | null; note?: string | null }) => Promise<void>;
 }
 
@@ -93,11 +98,44 @@ function ProjectBadge({ project }: { project?: ProjectRef }) {
   );
 }
 
+/**
+ * The category tag on a task card. Only rendered when at least one custom
+ * category exists — with none defined, every task simply buckets by its
+ * project's type on the Dashboard, and this control would have nothing
+ * useful to offer.
+ */
+function CategorySelect({
+  task, categories, setTaskCategory,
+}: {
+  task: Task;
+  categories: CategoryRef[];
+  setTaskCategory: (id: string, category: string) => Promise<void>;
+}) {
+  if (categories.length === 0) return null;
+  const current = categories.find((c) => c.key === task.category);
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }} onClick={(e) => e.stopPropagation()}>
+      <span className="task-cat-dot" style={{ background: current?.color ?? 'var(--border)' }} />
+      <select
+        className="task-cat-select"
+        value={task.category ?? ''}
+        onChange={(e) => { void setTaskCategory(task.id, e.target.value); }}
+        onClick={(e) => e.stopPropagation()}
+        title="Dashboard category — overrides the project's type"
+        draggable={false}
+      >
+        <option value="">by project</option>
+        {categories.map((c) => <option key={c.key} value={c.key}>{c.label}</option>)}
+      </select>
+    </span>
+  );
+}
+
 export function TodayClient({
-  date, realToday, brainDumpGroups, tasks, overdue, dayLoads, projects,
+  date, realToday, brainDumpGroups, tasks, overdue, dayLoads, projects, categories,
   streak, stalled, focusMinutesToday,
   addTask, scheduleTask, resizeTask, unscheduleTask, toggleTaskDone, deleteTask, moveTaskToToday,
-  moveAllOverdueToToday, setOneThing, logFocusSession,
+  moveAllOverdueToToday, setOneThing, setTaskCategory, logFocusSession,
 }: Props) {
   const router = useRouter();
   const [isSaving, startTransition] = useTransition();
@@ -306,7 +344,10 @@ export function TodayClient({
                     <span>{t.title}</span>
                     <ActionButton action={() => deleteTask(t.id)} className="btn-link" style={{ color: '#aaa' }} aria-label="Delete task" pendingLabel="…">×</ActionButton>
                   </div>
-                  <ProjectBadge project={projectById.get(t.project_id ?? '')} />
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <ProjectBadge project={projectById.get(t.project_id ?? '')} />
+                    <CategorySelect task={t} categories={categories} setTaskCategory={setTaskCategory} />
+                  </div>
                 </div>
               ))}
             </div>
@@ -476,6 +517,7 @@ export function TodayClient({
                         {t.title}
                       </div>
                       {compact ? null : <ProjectBadge project={project} />}
+                      {compact ? null : <CategorySelect task={t} categories={categories} setTaskCategory={setTaskCategory} />}
                       <div className="tb-time">{rangeLabel} · {fmtDuration(duration)}</div>
                     </div>
                     <span style={{ display: 'flex', gap: 7, flexShrink: 0 }}>

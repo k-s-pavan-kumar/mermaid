@@ -7,6 +7,18 @@ import { getSessionEmail } from '@/lib/auth/session';
 import { getSettings } from '@/features/settings/queries';
 import { todayIso } from '@/lib/tz/today';
 import { grandTotal, subtotal, type IncomeStream, type Invoice, type LineItem, type Quote } from './types';
+import { postIncomeEntry } from '@/features/daily-finance/actions';
+import { categoryForProjectType } from '@/features/daily-finance/types';
+import type { Project } from '@/features/projects/types';
+import type { Client } from '@/features/clients/types';
+
+const STREAM_CATEGORY: Record<IncomeStream, string> = {
+  freelance: 'Freelance royalty',
+  teaching: 'Institute payment',
+  product: 'Product income',
+  bounty: 'Bug bounty',
+  other: 'Other income',
+};
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
@@ -170,7 +182,7 @@ export async function convertQuoteToInvoice(quoteId: string): Promise<string | n
 }
 
 export async function markInvoicePaid(invoiceId: string): Promise<void> {
-  await requireOwner();
+  const owner = await requireOwner();
   const inv = await table<Invoice>('invoices').update(invoiceId, {
     status: 'paid',
     paid_at: todayIso(),
@@ -178,6 +190,39 @@ export async function markInvoicePaid(invoiceId: string): Promise<void> {
   revalidatePath('/billing');
   if (inv?.project_id) revalidatePath(`/projects/${inv.project_id}`);
   if (inv?.client_id) revalidatePath(`/clients/${inv.client_id}`);
+  if (!inv) return;
+
+  // Meridian doesn't have a separate "ProjectPayment" entity — a paid
+  // invoice already carries everything one would (amount, date, project,
+  // and a project can be paid in several installments, each its own
+  // invoice) — so marking an invoice paid IS the income event. This is the
+  // one and only place a real income FinanceEntry gets created.
+  let category = STREAM_CATEGORY[inv.stream] ?? 'Other income';
+  let projectName: string | null = null;
+  if (inv.project_id) {
+    const project = await table<Project>('projects').find(inv.project_id);
+    if (project) {
+      category = categoryForProjectType(project.type);
+      projectName = project.name;
+    }
+  }
+  if (!projectName && inv.client_id) {
+    const client = await table<Client>('clients').find(inv.client_id);
+    projectName = client?.name ?? null;
+  }
+
+  await postIncomeEntry({
+    ownerId: owner,
+    date: inv.paid_at ?? todayIso(),
+    category,
+    amount: grandTotal(inv),
+    note: inv.description || (projectName ? `${projectName} — invoice ${inv.number}` : `Invoice ${inv.number}`),
+    source: 'invoice_payment',
+    linkedProjectId: inv.project_id ?? null,
+    linkedInvoiceId: inv.id,
+  });
+  revalidatePath('/daily-finance');
+  revalidatePath('/dashboard');
 }
 
 export async function setDocStatus(kind: 'invoice' | 'quote', id: string, status: string): Promise<void> {

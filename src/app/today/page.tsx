@@ -3,8 +3,9 @@ import { getSessionEmail } from '@/lib/auth/session';
 import { getBrainDumpGrouped, getTasksForDate, getOverdueTasks, getDayLoads } from '@/features/today/queries';
 import {
   addTask, scheduleTask, resizeTask, unscheduleTask, toggleTaskDone, deleteTask,
-  moveTaskToToday, moveAllOverdueToToday, setOneThing, logFocusSession,
+  moveTaskToToday, moveAllOverdueToToday, setOneThing, setTaskCategory, logFocusSession,
 } from '@/features/today/actions';
+import { getSettings } from '@/features/settings/queries';
 import { getDayStats, getStreak, getStalledProjects } from '@/features/today/momentum';
 import { getProjects } from '@/features/projects/queries';
 import { TodayClient } from '@/features/today/components/TodayClient';
@@ -23,7 +24,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const realToday = todayIso();
   const activeDate = date ?? realToday;
 
-  const [brainDumpGroups, tasks, projects, overdue, dayLoads, streak, stalled, stats] = await Promise.all([
+  const [brainDumpGroups, tasks, projects, overdue, dayLoads, streak, stalled, stats, settings] = await Promise.all([
     getBrainDumpGrouped(email),
     getTasksForDate(email, activeDate),
     getProjects(),
@@ -32,6 +33,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
     getStreak(email),
     getStalledProjects(email),
     getDayStats(email, realToday, realToday),
+    getSettings(email),
   ]);
 
   return (
@@ -47,6 +49,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         stalled={stalled.map((p) => ({ id: p.id, name: p.name, days: p.days }))}
         focusMinutesToday={stats[realToday]?.focusMinutes ?? 0}
         projects={projects.map((p) => ({ id: p.id, name: p.name, type: p.type }))}
+        categories={settings.categories}
         addTask={addTask}
         scheduleTask={scheduleTask}
         resizeTask={resizeTask}
@@ -56,6 +59,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         moveTaskToToday={moveTaskToToday}
         moveAllOverdueToToday={moveAllOverdueToToday}
         setOneThing={setOneThing}
+        setTaskCategory={setTaskCategory}
         logFocusSession={logFocusSession}
       />
 

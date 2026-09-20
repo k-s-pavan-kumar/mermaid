@@ -31,6 +31,14 @@ export type LocalDB = {
   meetings: any[];
   settings: any[];
   focus_sessions: any[];
+  targets_history: any[];
+  finance_entries: any[];
+  bounty_cases: any[];
+  needs: any[];
+  courses: any[];
+  tracked_packages: any[];
+  metric_snapshots: any[];
+  project_status_log: any[];
 };
 
 export function readDb(): LocalDB {
@@ -57,34 +65,44 @@ export interface TableOps<T> {
 }
 
 export function table<T extends { id: string }>(name: keyof LocalDB): TableOps<T> {
+  // Any table added after the app was first deployed — targets_history is
+  // the newest — can be absent from an older data/db.local.json or from a
+  // hand-built fixture in a test script that predates it. Falling back to
+  // an empty array here (rather than the raw `undefined` a real user file
+  // would have) means "this table has no rows yet", which is the correct
+  // reading, instead of every read of it throwing.
+  const rowsOf = (db: LocalDB): T[] => (db[name] as T[] | undefined) ?? [];
+
   return {
     async all(): Promise<T[]> {
-      return readDb()[name] as T[];
+      return rowsOf(readDb());
     },
     async find(id: string): Promise<T | undefined> {
-      return (readDb()[name] as T[]).find((r) => r.id === id);
+      return rowsOf(readDb()).find((r) => r.id === id);
     },
     async where(pred: (row: T) => boolean): Promise<T[]> {
-      return (readDb()[name] as T[]).filter(pred);
+      return rowsOf(readDb()).filter(pred);
     },
     async insert(row: T): Promise<T> {
       const db = readDb();
+      if (!db[name]) (db as any)[name] = [];
       (db[name] as T[]).push(row);
       writeDb(db);
       return row;
     },
     async update(id: string, patch: Partial<T>): Promise<T | undefined> {
       const db = readDb();
-      const rows = db[name] as T[];
+      const rows = rowsOf(db);
       const idx = rows.findIndex((r) => r.id === id);
       if (idx === -1) return undefined;
       rows[idx] = Object.assign({}, rows[idx], patch) as T;
+      (db as any)[name] = rows;
       writeDb(db);
       return rows[idx];
     },
     async remove(id: string): Promise<void> {
       const db = readDb();
-      (db as any)[name] = (db[name] as T[]).filter((r) => r.id !== id);
+      (db as any)[name] = rowsOf(db).filter((r) => r.id !== id);
       writeDb(db);
     },
   };

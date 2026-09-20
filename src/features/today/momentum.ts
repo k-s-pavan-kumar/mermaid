@@ -103,7 +103,7 @@ export async function getStalledProjects(
     Math.round((Date.parse(b + 'T00:00:00Z') - Date.parse(a + 'T00:00:00Z')) / 86_400_000);
 
   return projects
-    .filter((p) => p.status !== 'done')
+    .filter((p) => p.status !== 'done' && p.status !== 'dropped')
     .map((p) => {
       const dates = [
         ...tasks.filter((t) => t.project_id === p.id && t.done).map((t) => t.scheduled_date ?? t.dump_date),

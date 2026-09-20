@@ -19,7 +19,8 @@
     "verify:task-project-sync": "tsx scripts/verify-task-project-sync.ts",
     "verify:dump-date": "tsx scripts/verify-dump-date.ts",
     "verify:overdue": "tsx scripts/verify-overdue.ts",
-    "supabase:types": "supabase gen types typescript --project-id \"$SUPABASE_PROJECT_ID\" --schema public > src/types/database.types.ts"
+    "supabase:types": "supabase gen types typescript --project-id \"$SUPABASE_PROJECT_ID\" --schema public > src/types/database.types.ts",
+    "verify:new-features": "tsx scripts/verify-new-features.ts"
   },
   "dependencies": {
     "next": "^15.0.0",

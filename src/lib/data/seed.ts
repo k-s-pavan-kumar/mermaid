@@ -22,6 +22,14 @@ const db: LocalDB = {
   meetings: [],
   settings: [],
   focus_sessions: [],
+  targets_history: [],
+  finance_entries: [],
+  bounty_cases: [],
+  needs: [],
+  courses: [],
+  tracked_packages: [],
+  metric_snapshots: [],
+  project_status_log: [],
 };
 
 writeDb(db);
