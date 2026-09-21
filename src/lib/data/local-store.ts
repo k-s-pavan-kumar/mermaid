@@ -42,6 +42,8 @@ export type LocalDB = {
   tracked_packages: any[];
   metric_snapshots: any[];
   project_status_log: any[];
+  // Optional so older fixtures/db files that predate the day log still type-check.
+  day_blocks?: any[];
 };
 
 export function readDb(): LocalDB {

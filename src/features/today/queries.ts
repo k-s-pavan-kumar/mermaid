@@ -1,5 +1,6 @@
 import { table } from '@/lib/data';
-import type { Task } from './types';
+import type { Task, DayBlock } from './types';
+import { addDays } from './dayblocks';
 
 /** Rows written before dump_date existed won't have it — fall back to the
  * date portion of created_at rather than crashing or silently dropping them. */
@@ -92,4 +93,17 @@ export async function getTasksForProject(projectId: string): Promise<Task[]> {
     }
     return effectiveDumpDate(a).localeCompare(effectiveDumpDate(b));
   });
+}
+
+/**
+ * Sleep / travel / office blocks that touch `date`: anything starting on it,
+ * plus anything that started the day before (last night's sleep runs past
+ * midnight into this morning).
+ */
+export async function getDayBlocks(ownerId: string, date: string): Promise<DayBlock[]> {
+  const prev = addDays(date, -1);
+  const rows = await table<DayBlock>('day_blocks').where(
+    (b) => b.owner_id === ownerId && (b.date === date || b.date === prev)
+  );
+  return rows.sort((a, b) => (a.date === b.date ? a.start_minute - b.start_minute : a.date < b.date ? -1 : 1));
 }

@@ -68,3 +68,26 @@ export interface FocusSession {
    */
   category?: string | null;
 }
+
+/**
+ * A stretch of the day that isn't a task: sleep, travel, or office time.
+ * Kept out of `tasks` on purpose — these aren't things to tick off, they're
+ * a record of where the hours went, so the day can be read end to end
+ * (slept 7h, travelled 1h 45m, office 9h) next to the planned work.
+ *
+ * `date` + `start_minute` say when the block STARTS; `duration_minutes` may
+ * run past midnight (a 11:30 PM → 6:30 AM sleep starts on one date and ends
+ * on the next), and the Today view splits it across both days.
+ */
+export type DayBlockKind = 'sleep' | 'travel' | 'office';
+
+export interface DayBlock {
+  id: string;
+  owner_id: string;
+  date: string;              // 'YYYY-MM-DD' — the day the block starts on
+  kind: DayBlockKind;
+  start_minute: number;      // 0-1439, minutes from midnight (minute precision, not the half-hour grid)
+  duration_minutes: number;  // 1-1440; start + duration may exceed 1440 (crosses midnight)
+  note: string | null;
+  created_at: string;
+}

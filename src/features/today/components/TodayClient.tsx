@@ -2,10 +2,11 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, useTransition } from 'react';
-import type { Task } from '../types';
+import type { Task, DayBlock } from '../types';
 import type { BrainDumpGroup, DayLoad } from '../queries';
 import { FocusTimer } from '@/components/FocusTimer';
 import { MonthCalendar } from './MonthCalendar';
+import { DayLog } from './DayLog';
 import { ActionButton } from '@/components/ActionButton';
 import { SubmitButton } from '@/components/SubmitButton';
 import { TYPE_COLOR } from '@/lib/project-colors';
@@ -13,6 +14,7 @@ import {
   SLOT_MINUTES, SLOTS_PER_DAY, MIN_DURATION_MINUTES, MAX_DURATION_MINUTES,
   startMinutes, durationMinutes, slotToHourMinute, fmtClock, fmtDuration,
 } from '../time';
+import { DAY_BLOCK_META, DAY_MIN, assignColumns, segmentsForDay } from '../dayblocks';
 
 // A full 24-hour day on a HALF-HOUR grid. The old 8am–9pm window quietly
 // refused to hold early mornings and late-night work — which is exactly when
@@ -84,6 +86,10 @@ interface Props {
   moveAllOverdueToToday: (todayDate: string) => Promise<void>;
   setOneThing: (taskId: string, date: string) => Promise<void>;
   setTaskCategory: (id: string, category: string) => Promise<void>;
+  dayBlocks: DayBlock[];
+  logSleep: (formData: FormData) => Promise<void>;
+  addDayBlock: (formData: FormData) => Promise<void>;
+  deleteDayBlock: (id: string) => Promise<void>;
   logFocusSession: (input: { minutes: number; completedMinutes: number; taskId?: string | null; projectId?: string | null; note?: string | null }) => Promise<void>;
 }
 
@@ -136,6 +142,7 @@ export function TodayClient({
   streak, stalled, focusMinutesToday,
   addTask, scheduleTask, resizeTask, unscheduleTask, toggleTaskDone, deleteTask, moveTaskToToday,
   moveAllOverdueToToday, setOneThing, setTaskCategory, logFocusSession,
+  dayBlocks, logSleep, addDayBlock, deleteDayBlock,
 }: Props) {
   const router = useRouter();
   const [isSaving, startTransition] = useTransition();
@@ -231,6 +238,9 @@ export function TodayClient({
   }
 
   const scheduled = tasks.filter((t) => t.scheduled_hour !== null);
+  const plannedMinutes = scheduled.reduce((n, t) => n + durationMinutes(t), 0);
+  // Sleep / office / travel, laid out in a lane beside the task blocks.
+  const laneSegments = assignColumns(segmentsForDay(dayBlocks, date));
 
   const oneThing = tasks.find((t) => t.focus_date === date) ?? null;
   const dayTasks = tasks.filter((t) => t.scheduled_hour !== null);
@@ -440,6 +450,15 @@ export function TodayClient({
           </div>
         )}
 
+        <DayLog
+          date={date}
+          blocks={dayBlocks}
+          plannedMinutes={plannedMinutes}
+          logSleep={logSleep}
+          addDayBlock={addDayBlock}
+          deleteDayBlock={deleteDayBlock}
+        />
+
         {isSaving && (
           <div className="saving-pill" role="status" aria-live="polite">
             <span className="spin" aria-hidden="true" /> Saving…
@@ -477,7 +496,28 @@ export function TodayClient({
           {/* Foreground overlay — variable-height task blocks positioned by
               time, independent of the row grid underneath, so a block can
               span multiple hours. */}
-          <div className="timebox-overlay" style={{ top: 0 }}>
+          <div className={`timebox-overlay${laneSegments.length > 0 ? ' has-lane' : ''}`} style={{ top: 0 }}>
+            {laneSegments.length > 0 && (
+              <div className="tb-lane">
+                {laneSegments.map(({ seg, col, cols }) => {
+                  const meta = DAY_BLOCK_META[seg.kind];
+                  const top = (seg.startMin / SLOT_MINUTES) * SLOT_HEIGHT;
+                  const height = Math.max(SLOT_HEIGHT - 2, ((seg.endMin - seg.startMin) / SLOT_MINUTES) * SLOT_HEIGHT - 2);
+                  const minutes = seg.endMin - seg.startMin;
+                  return (
+                    <div
+                      key={`${seg.block.id}-${seg.startMin}`}
+                      className={`tb-lane-seg dk-${seg.kind}`}
+                      style={{ top, height, left: `${(col / cols) * 100}%`, width: `calc(${100 / cols}% - 2px)` }}
+                      title={`${meta.label}${seg.block.note ? ` · ${seg.block.note}` : ''} · ${fmtClock(seg.startMin)} – ${seg.endMin >= DAY_MIN ? '12 AM' : fmtClock(seg.endMin)}${seg.continuesFromPrev ? ' (started yesterday)' : ''}${seg.continuesToNext ? ' (continues tomorrow)' : ''}`}
+                    >
+                      <span>{meta.emoji}{height >= 30 && cols === 1 ? ` ${meta.label}` : ''}</span>
+                      {height >= 44 && <span className="tb-lane-dur">{fmtDuration(minutes)}</span>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
             {scheduled.length === 0 && (
               <div className="timebox-empty">
                 <img src="/mascot/sleeping.png" alt="" width={86} height={86} />

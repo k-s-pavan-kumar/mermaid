@@ -33,6 +33,7 @@ const db: LocalDB = {
   tracked_packages: [],
   metric_snapshots: [],
   project_status_log: [],
+  day_blocks: [],
 };
 
 writeDb(db);

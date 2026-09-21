@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
 import { todayIso } from '@/lib/tz/today';
-import type { FocusSession, Task } from './types';
+import type { FocusSession, Task, DayBlock, DayBlockKind } from './types';
+import { DAY_MIN, addDays, endDate, parseHHMM, spanMinutes } from './dayblocks';
 import { clampDuration, normaliseMinute, MIN_DURATION_MINUTES } from './time';
 import { newId } from '@/lib/id';
 
@@ -261,4 +262,81 @@ export async function setTaskLoggedHours(id: string, formData: FormData): Promis
   const updated = await table<Task>('tasks').update(id, { logged_minutes: Math.round(hours * 60) });
   revalidateTaskSurfaces(updated?.project_id ?? null);
   if (updated?.project_id) revalidatePath('/clients', 'layout');
+}
+
+// ---------------------------------------------------------------------------
+// Day log — sleep, travel and office time
+// ---------------------------------------------------------------------------
+
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Records the night's sleep that ended on `date` (the day you woke up).
+ * "Slept at" later than "woke up" means you went to bed the evening before,
+ * so 11:30 PM → 6:30 AM is stored as a block starting yesterday at 23:30,
+ * 7h long. Logging again for the same morning replaces the earlier entry
+ * instead of stacking a second one.
+ */
+export async function logSleep(formData: FormData): Promise<void> {
+  const owner_id = await requireOwner();
+  const date = String(formData.get('date') ?? '').trim();
+  const bed = parseHHMM(String(formData.get('slept_at') ?? ''));
+  const wake = parseHHMM(String(formData.get('woke_at') ?? ''));
+  if (!ISO_DATE.test(date) || bed === null || wake === null) return;
+
+  const duration = spanMinutes(bed, wake);
+  if (duration === null) return;
+  const blockDate = bed > wake ? addDays(date, -1) : date;
+
+  const earlier = await table<DayBlock>('day_blocks').where(
+    (b) => b.owner_id === owner_id && b.kind === 'sleep' && endDate(b) === date
+  );
+  for (const b of earlier) await table<DayBlock>('day_blocks').remove(b.id);
+
+  await table<DayBlock>('day_blocks').insert({
+    id: newId(),
+    owner_id,
+    date: blockDate,
+    kind: 'sleep',
+    start_minute: bed,
+    duration_minutes: duration,
+    note: null,
+    created_at: new Date().toISOString(),
+  });
+  revalidatePath('/today');
+}
+
+/** Adds an office or travel block to `date`. A "to" earlier than "from" runs
+ *  past midnight, same as sleep. */
+export async function addDayBlock(formData: FormData): Promise<void> {
+  const owner_id = await requireOwner();
+  const date = String(formData.get('date') ?? '').trim();
+  const kind = String(formData.get('kind') ?? '').trim();
+  const from = parseHHMM(String(formData.get('from') ?? ''));
+  const to = parseHHMM(String(formData.get('to') ?? ''));
+  const note = String(formData.get('note') ?? '').trim().slice(0, 80);
+  if (!ISO_DATE.test(date) || (kind !== 'office' && kind !== 'travel') || from === null || to === null) return;
+
+  const duration = spanMinutes(from, to);
+  if (duration === null) return;
+
+  await table<DayBlock>('day_blocks').insert({
+    id: newId(),
+    owner_id,
+    date,
+    kind: kind as DayBlockKind,
+    start_minute: from,
+    duration_minutes: duration,
+    note: note || null,
+    created_at: new Date().toISOString(),
+  });
+  revalidatePath('/today');
+}
+
+export async function deleteDayBlock(id: string): Promise<void> {
+  const owner_id = await requireOwner();
+  const row = await table<DayBlock>('day_blocks').find(id);
+  if (!row || row.owner_id !== owner_id) return;
+  await table<DayBlock>('day_blocks').remove(id);
+  revalidatePath('/today');
 }

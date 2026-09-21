@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation';
 import { getSessionEmail } from '@/lib/auth/session';
-import { getBrainDumpGrouped, getTasksForDate, getOverdueTasks, getDayLoads } from '@/features/today/queries';
+import { getBrainDumpGrouped, getTasksForDate, getOverdueTasks, getDayLoads, getDayBlocks } from '@/features/today/queries';
 import {
   addTask, scheduleTask, resizeTask, unscheduleTask, toggleTaskDone, deleteTask,
   moveTaskToToday, moveAllOverdueToToday, setOneThing, setTaskCategory, logFocusSession,
+  logSleep, addDayBlock, deleteDayBlock,
 } from '@/features/today/actions';
 import { getSettings } from '@/features/settings/queries';
 import { getDayStats, getStreak, getStalledProjects } from '@/features/today/momentum';
@@ -24,7 +25,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const realToday = todayIso();
   const activeDate = date ?? realToday;
 
-  const [brainDumpGroups, tasks, projects, overdue, dayLoads, streak, stalled, stats, settings] = await Promise.all([
+  const [brainDumpGroups, tasks, projects, overdue, dayLoads, streak, stalled, stats, settings, dayBlocks] = await Promise.all([
     getBrainDumpGrouped(email),
     getTasksForDate(email, activeDate),
     getProjects(),
@@ -34,6 +35,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
     getStalledProjects(email),
     getDayStats(email, realToday, realToday),
     getSettings(email),
+    getDayBlocks(email, activeDate),
   ]);
 
   return (
@@ -61,6 +63,10 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         setOneThing={setOneThing}
         setTaskCategory={setTaskCategory}
         logFocusSession={logFocusSession}
+        dayBlocks={dayBlocks}
+        logSleep={logSleep}
+        addDayBlock={addDayBlock}
+        deleteDayBlock={deleteDayBlock}
       />
 
       <SkillPanel

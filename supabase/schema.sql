@@ -557,6 +557,22 @@ create table finance_obligations (
 create index finance_obligations_owner_idx on finance_obligations(owner_id, active);
 
 -- ---------------------------------------------------------------------------
+-- Day log (Today page): sleep / travel / office blocks. date + start_minute is
+-- when a block starts; duration_minutes may run past midnight.
+-- ---------------------------------------------------------------------------
+create table day_blocks (
+  id               text primary key,
+  owner_id         uuid not null references auth.users(id) default auth.uid(),
+  date             date not null,
+  kind             text not null check (kind in ('sleep', 'travel', 'office')),
+  start_minute     int  not null check (start_minute between 0 and 1439),
+  duration_minutes int  not null check (duration_minutes between 1 and 1440),
+  note             text,
+  created_at       timestamptz not null default now()
+);
+create index day_blocks_owner_date_idx on day_blocks(owner_id, date);
+
+-- ---------------------------------------------------------------------------
 -- Bug Bounty Pipeline — a standalone kanban, deliberately not shaped like a
 -- Project (no client, no invoice). Distinct from the older, lighter
 -- `bounty_submissions` still used on a bounty-type project's own
@@ -689,6 +705,7 @@ alter table finance_entries enable row level security;
 alter table finance_categories enable row level security;
 alter table finance_category_rules enable row level security;
 alter table finance_obligations enable row level security;
+alter table day_blocks enable row level security;
 alter table bounty_cases enable row level security;
 alter table needs enable row level security;
 alter table courses enable row level security;
@@ -715,6 +732,7 @@ create policy "owner full access" on finance_entries for all using (owner_id = a
 create policy "owner full access" on finance_categories for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on finance_category_rules for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on finance_obligations for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on day_blocks for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on bounty_cases for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on needs for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on courses for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
