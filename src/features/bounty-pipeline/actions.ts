@@ -6,15 +6,12 @@ import { getSessionEmail } from '@/lib/auth/session';
 import { todayIso } from '@/lib/tz/today';
 import { postIncomeEntry } from '@/features/daily-finance/actions';
 import type { BountyCase, BountySeverity } from './types';
+import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
   if (!email) throw new Error('Not authenticated');
   return email;
-}
-
-function newId(): string {
-  return `bc_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /** Always lands in `submitted` — every case starts here. */

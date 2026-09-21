@@ -1,5 +1,6 @@
 import { table } from '@/lib/data';
 import type { ProjectStatusLogEntry } from './types';
+import { newId } from '@/lib/id';
 
 /**
  * Write one append-only audit entry. Never call `.update()` or `.remove()`
@@ -17,7 +18,7 @@ export async function logProjectField(entry: {
   note?: string | null;
 }): Promise<void> {
   await table<ProjectStatusLogEntry>('project_status_log').insert({
-    id: `psl_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    id: newId(),
     owner_id: entry.owner_id,
     project_id: entry.project_id,
     project_name: entry.project_name,

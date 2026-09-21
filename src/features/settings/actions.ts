@@ -5,6 +5,7 @@ import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
 import { getSettings, getTargetsHistory } from './queries';
 import type { ClockWidget, WorkspaceSettings, Targets, TargetsVersion } from './types';
+import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
@@ -45,7 +46,7 @@ export async function addClock(formData: FormData): Promise<void> {
   if (clocks.some((c) => c.timezone === timezone && c.label === label)) return;
 
   const clock: ClockWidget = {
-    id: `clk_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    id: newId(),
     label,
     timezone,
     home: clocks.length === 0,
@@ -127,7 +128,7 @@ export async function addTargetsVersion(formData: FormData): Promise<void> {
     await table<TargetsVersion>('targets_history').update(existing.id, { targets });
   } else {
     await table<TargetsVersion>('targets_history').insert({
-      id: `tv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: newId(),
       owner_id: owner,
       effective_from: effectiveFrom,
       targets,

@@ -4,6 +4,7 @@ import { getNotes } from '@/features/notes/queries';
 import { createNote, deleteNote, getNoteContent, syncVault, getOrphanedNotes } from '@/features/notes/actions';
 import { getProjects } from '@/features/projects/queries';
 import { getClients } from '@/features/clients/queries';
+import { vaultAvailable } from '@/lib/vault/local-vault';
 import { Shell } from '@/components/Shell';
 import { SkillPanel } from '@/features/assistant/components/SkillPanel';
 import { skillCards } from '@/features/assistant/skills';
@@ -38,10 +39,14 @@ export default async function NotesPage({ searchParams }: { searchParams: Promis
   return (
     <Shell active="notes" title="Notes & SOPs" crumb="Workspace" action={syncAction}>
       <div className="sync-bar">
-        <span>
-          Notes live as <code>.md</code> files in <code>vault/</code>. Edit them here or in Obsidian —
-          hit <strong>Sync vault</strong> to pull in anything written on the Obsidian side.
-        </span>
+        {vaultAvailable() ? (
+          <span>
+            Notes live as <code>.md</code> files in <code>vault/</code>. Edit them here or in Obsidian —
+            hit <strong>Sync vault</strong> to pull in anything written on the Obsidian side.
+          </span>
+        ) : (
+          <span>Notes are stored in your database. (Obsidian vault sync is only available when Meridian runs on your own machine.)</span>
+        )}
       </div>
 
       {orphans.length > 0 && (

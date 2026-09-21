@@ -7,6 +7,8 @@ import { writeVaultNote, deleteVaultNote, readVaultNote } from '@/lib/vault/loca
 import { getProjectById } from '@/features/projects/queries';
 import { getClientById } from '@/features/clients/queries';
 import type { Note } from './types';
+import { uniqueNoteTitle } from './unique';
+import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
@@ -14,15 +16,11 @@ async function requireOwner(): Promise<string> {
   return email;
 }
 
-function newId(): string {
-  return `note_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-}
-
 export async function createNote(formData: FormData): Promise<void> {
   const owner_id = await requireOwner();
-  const title = String(formData.get('title') ?? '').trim();
+  const rawTitle = String(formData.get('title') ?? '').trim();
   const content = String(formData.get('content') ?? '');
-  if (!title) return;
+  if (!rawTitle) return;
 
   const project_id = String(formData.get('project_id') ?? '').trim() || null;
   const client_id = String(formData.get('client_id') ?? '').trim() || null;
@@ -48,6 +46,7 @@ export async function createNote(formData: FormData): Promise<void> {
     }
   }
 
+  const title = await uniqueNoteTitle(owner_id, folder, rawTitle);
   const vault_path = writeVaultNote({ title, folder, tags, content, links });
 
   await table<Note>('notes').insert({
@@ -58,6 +57,7 @@ export async function createNote(formData: FormData): Promise<void> {
     title,
     vault_path,
     tags,
+    content,
     synced_at: new Date().toISOString(),
     created_at: new Date().toISOString(),
   });
@@ -90,7 +90,7 @@ export async function updateNoteContent(id: string, formData: FormData): Promise
 
   const vault_path = writeVaultNote({ title: note.title, folder, tags, content, links });
 
-  await table<Note>('notes').update(id, { tags, vault_path, synced_at: new Date().toISOString() });
+  await table<Note>('notes').update(id, { tags, vault_path, content, synced_at: new Date().toISOString() });
   revalidatePath('/notes');
 }
 
@@ -106,7 +106,9 @@ export async function getNoteContent(id: string): Promise<string> {
   await requireOwner();
   const note = await table<Note>('notes').find(id);
   if (!note) return '';
-  return readVaultNote(note.vault_path) ?? '';
+  // The file wins when it exists (you may have edited it in Obsidian);
+  // otherwise the copy stored in the database.
+  return readVaultNote(note.vault_path) ?? note.content ?? '';
 }
 
 /**
@@ -138,6 +140,7 @@ export async function syncVault(): Promise<{ imported: number; missing: number }
       title: file.title,
       vault_path: file.vaultPath,
       tags: file.tags,
+      content: file.body,
       synced_at: new Date().toISOString(),
       created_at: file.mtime,
     });

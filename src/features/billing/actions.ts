@@ -11,6 +11,7 @@ import { postIncomeEntry } from '@/features/daily-finance/actions';
 import { categoryForProjectType } from '@/features/daily-finance/types';
 import type { Project } from '@/features/projects/types';
 import type { Client } from '@/features/clients/types';
+import { newId } from '@/lib/id';
 
 const STREAM_CATEGORY: Record<IncomeStream, string> = {
   freelance: 'Freelance royalty',
@@ -24,10 +25,6 @@ async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
   if (!email) throw new Error('Not authenticated');
   return email;
-}
-
-function newId(prefix: string): string {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /**

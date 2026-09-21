@@ -9,15 +9,12 @@ import { getSourceSnapshot, getLinkableProjects, getLinkableCourses } from './so
 import { reconcileNeeds, occupiedSourceIds } from './queries';
 import { postRewardVaultExpense } from '@/features/daily-finance/actions';
 import type { Need, NeedSourceType } from './types';
+import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
   if (!email) throw new Error('Not authenticated');
   return email;
-}
-
-function newId(): string {
-  return `need_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /**

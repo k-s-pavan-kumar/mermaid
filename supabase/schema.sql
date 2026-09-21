@@ -401,6 +401,9 @@ create table notes (
   title       text not null,
   vault_path  text not null,      -- relative path inside the Obsidian vault, e.g. "SOPs/Client onboarding.md"
   tags        text[] not null default '{}',
+  -- Note body. Serverless hosts (Vercel) have no writable disk, so the body
+  -- lives here; the .md vault file is an optional local mirror.
+  content     text not null default '',
   synced_at   timestamptz,
   created_at  timestamptz not null default now()
 );
@@ -623,7 +626,15 @@ alter table needs enable row level security;
 alter table courses enable row level security;
 alter table tracked_packages enable row level security;
 alter table metric_snapshots enable row level security;
+alter table meetings enable row level security;
+alter table focus_sessions enable row level security;
+alter table settings enable row level security;
 
+create policy "owner full access" on quotes for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on invoices for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on meetings for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on focus_sessions for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on settings for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on clients for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on projects for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on notes for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
@@ -641,14 +652,6 @@ create policy "owner full access" on metric_snapshots for all using (owner_id = 
 
 -- Child tables scope through their project's owner
 create policy "owner via project" on project_phases for all
-  using (exists (select 1 from projects p where p.id = project_id and p.owner_id = auth.uid()))
-  with check (exists (select 1 from projects p where p.id = project_id and p.owner_id = auth.uid()));
-
-create policy "owner via project" on quotes for all
-  using (exists (select 1 from projects p where p.id = project_id and p.owner_id = auth.uid()))
-  with check (exists (select 1 from projects p where p.id = project_id and p.owner_id = auth.uid()));
-
-create policy "owner via project" on invoices for all
   using (exists (select 1 from projects p where p.id = project_id and p.owner_id = auth.uid()))
   with check (exists (select 1 from projects p where p.id = project_id and p.owner_id = auth.uid()));
 

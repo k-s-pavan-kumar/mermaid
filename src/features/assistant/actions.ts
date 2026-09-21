@@ -10,7 +10,9 @@ import { getClientById } from '@/features/clients/queries';
 import { getSkill } from './skills';
 import { runSkill, buildPayload, type SkillRunResult } from './runner';
 import type { Note } from '@/features/notes/types';
+import { uniqueNoteTitle } from '@/features/notes/unique';
 import type { Task } from '@/features/today/types';
+import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
@@ -41,7 +43,7 @@ export async function runSkillAction(formData: FormData): Promise<SkillRunResult
     const now = new Date().toISOString();
     for (const title of result.tasks) {
       await table<Task>('tasks').insert({
-        id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        id: newId(),
         owner_id: owner,
         project_id: projectId,
         title,
@@ -60,7 +62,7 @@ export async function runSkillAction(formData: FormData): Promise<SkillRunResult
 
   if (skill.output === 'note' && result.content) {
     const payload = await buildPayload(owner, { projectId, clientId, input });
-    const title = skill.noteTitle?.(payload) ?? skill.label;
+    const title = await uniqueNoteTitle(owner, skill.noteFolder ?? 'Notes', skill.noteTitle?.(payload) ?? skill.label);
     const links: string[] = [];
 
     if (projectId) {
@@ -81,13 +83,14 @@ export async function runSkillAction(formData: FormData): Promise<SkillRunResult
     });
 
     const note = await table<Note>('notes').insert({
-      id: `note_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: newId(),
       owner_id: owner,
       project_id: projectId,
       client_id: clientId,
       title,
       vault_path,
       tags: skill.tags ?? [],
+      content: result.content,
       synced_at: new Date().toISOString(),
       created_at: new Date().toISOString(),
     });

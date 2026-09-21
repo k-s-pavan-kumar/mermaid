@@ -1,7 +1,11 @@
 import { notFound } from 'next/navigation';
+import { runWithServiceRole } from '@/lib/data';
 import { getClientByToken, getClientWorkspace } from '@/features/clients/queries';
 import { getSettings } from '@/features/settings/queries';
 import { grandTotal } from '@/features/billing/types';
+
+// Never cache: a revoked or rotated token must stop working immediately.
+export const dynamic = 'force-dynamic';
 
 const money = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 
@@ -14,13 +18,18 @@ const money = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFraction
  */
 export default async function PortalPage({ params }: { params: Promise<{ token: string }> }) {
   const { token } = await params;
-  const client = await getClientByToken(token);
-  if (!client) notFound();
-
-  const workspace = await getClientWorkspace(client.id);
-  if (!workspace) notFound();
-
-  const settings = await getSettings(client.owner_id);
+  // No logged-in user here, so RLS would hide everything. Read with the
+  // service role, but only ever for the one client the token unlocks.
+  const data = await runWithServiceRole(async () => {
+    const client = await getClientByToken(token);
+    if (!client) return null;
+    const workspace = await getClientWorkspace(client.id);
+    if (!workspace) return null;
+    const settings = await getSettings(client.owner_id);
+    return { client, workspace, settings };
+  });
+  if (!data) notFound();
+  const { client, workspace, settings } = data;
   const { projects, meetings, invoices, money: totals } = workspace;
   const upcoming = meetings.filter((m) => new Date(m.starts_at) >= new Date()).reverse();
 

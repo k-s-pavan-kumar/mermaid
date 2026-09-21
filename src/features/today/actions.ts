@@ -6,15 +6,12 @@ import { getSessionEmail } from '@/lib/auth/session';
 import { todayIso } from '@/lib/tz/today';
 import type { FocusSession, Task } from './types';
 import { clampDuration, normaliseMinute, MIN_DURATION_MINUTES } from './time';
+import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
   if (!email) throw new Error('Not authenticated');
   return email;
-}
-
-function newId(): string {
-  return `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 // Revalidate both surfaces that read tasks — Today and the owning project's
@@ -224,7 +221,7 @@ export async function logFocusSession(input: {
   if (input.completedMinutes < 1) return;
 
   await table<FocusSession>('focus_sessions').insert({
-    id: `focus_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    id: newId(),
     owner_id,
     task_id: input.taskId ?? null,
     project_id: input.projectId ?? null,

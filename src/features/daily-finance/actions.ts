@@ -6,15 +6,12 @@ import { getSessionEmail } from '@/lib/auth/session';
 import type { FinanceEntry } from './types';
 import { EXPENSE_CATEGORIES } from './types';
 import { insertIncomeEntry, insertRewardVaultExpense } from './queries';
+import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
   if (!email) throw new Error('Not authenticated');
   return email;
-}
-
-function newId(): string {
-  return `fe_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 /**

@@ -4,15 +4,12 @@ import { revalidatePath } from 'next/cache';
 import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
 import type { TrackedPackage, MetricSnapshot, Platform } from './types';
+import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
   if (!email) throw new Error('Not authenticated');
   return email;
-}
-
-function newId(prefix: string): string {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function addTrackedPackage(formData: FormData): Promise<void> {

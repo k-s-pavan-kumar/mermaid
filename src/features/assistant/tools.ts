@@ -11,6 +11,7 @@ import type { Project, ProjectType } from '@/features/projects/types';
 import type { Task } from '@/features/today/types';
 import type { Client, WorkType } from '@/features/clients/types';
 import type { Meeting } from '@/features/meetings/types';
+import { newId } from '@/lib/id';
 
 /**
  * The assistant's hands.
@@ -97,10 +98,6 @@ export const TOOL_SPECS: ToolSpec[] = [
     location: str('Link or place, optional.'),
   }, ['client', 'title', 'starts_at']),
 ];
-
-function newId(prefix: string): string {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-}
 
 function matchByNameOrId<T extends { id: string; name: string }>(rows: T[], needle?: string): T | undefined {
   if (!needle) return undefined;

@@ -1,6 +1,7 @@
 import { table } from '@/lib/data';
 import { shiftIso } from '@/lib/tz/today';
 import type { FinanceEntry, DayGroup, MonthTotals } from './types';
+import { newId } from '@/lib/id';
 
 async function entriesFor(ownerId: string, from: string, to: string): Promise<FinanceEntry[]> {
   const rows = await table<FinanceEntry>('finance_entries').where(
@@ -110,7 +111,7 @@ export { shiftIso };
 // ---------------------------------------------------------------------------
 
 function newEntryId(): string {
-  return `fe_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return newId();
 }
 
 /**

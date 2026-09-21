@@ -58,10 +58,6 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <button type="submit" className="btn">Sign in</button>
           </form>
 
-          <p className="text-muted" style={{ fontSize: 11.5, marginTop: 18 }}>
-            Single-user local auth — credentials come from <span className="mono">.env</span>. Swap in
-            Supabase Auth before this is reachable by anyone else.
-          </p>
         </div>
       </main>
     </div>

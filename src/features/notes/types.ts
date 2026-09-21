@@ -6,6 +6,8 @@ export interface Note {
   title: string;
   vault_path: string;
   tags: string[];
+  /** Note body, stored in the DB so it survives hosts with no writable disk. */
+  content?: string;
   synced_at: string | null;
   created_at: string;
 }

@@ -14,3 +14,5 @@ export function table<T extends { id: string }>(name: string): TableOps<T> {
   }
   return localTable<T>(name as any);
 }
+
+export { runWithServiceRole } from './service-scope';

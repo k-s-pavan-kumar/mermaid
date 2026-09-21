@@ -6,15 +6,12 @@ import { getSessionEmail } from '@/lib/auth/session';
 import { relinkNeed } from '@/features/reward-vault/actions';
 import { courseStatus } from './types';
 import type { Course } from './types';
+import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
   if (!email) throw new Error('Not authenticated');
   return email;
-}
-
-function newId(): string {
-  return `course_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function addCourse(formData: FormData): Promise<{ error?: string }> {

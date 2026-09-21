@@ -6,6 +6,7 @@ import { getSessionEmail } from '@/lib/auth/session';
 import type { Meeting } from './types';
 import type { Task } from '@/features/today/types';
 import { todayIso } from '@/lib/tz/today';
+import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
@@ -20,7 +21,7 @@ export async function addMeeting(clientId: string, formData: FormData): Promise<
   if (!title || !starts_at) return;
 
   await table<Meeting>('meetings').insert({
-    id: `meet_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    id: newId(),
     owner_id,
     client_id: clientId,
     project_id: String(formData.get('project_id') ?? '').trim() || null,
@@ -56,7 +57,7 @@ export async function followUpToTask(clientId: string, meetingId: string): Promi
   if (!meeting?.follow_up) return;
 
   await table<Task>('tasks').insert({
-    id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    id: newId(),
     owner_id,
     project_id: meeting.project_id,
     title: meeting.follow_up,

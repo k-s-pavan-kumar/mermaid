@@ -17,8 +17,10 @@ export async function getClientById(id: string): Promise<Client | undefined> {
 }
 
 export async function getClientByToken(token: string): Promise<Client | undefined> {
-  const rows = await table<Client>('clients').where((c) => !!c.portal_token && c.portal_token === token);
-  return rows[0];
+  // Tokens are 32 chars (24 random bytes, base64url). Reject anything shorter
+  // outright so an empty or guessable value can never match a row.
+  if (!token || token.length < 20) return undefined;
+  return table<Client>('clients').findBy('portal_token', token);
 }
 
 /**

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { vaultAvailable } from './local-vault';
 
 const VAULT_PATH = path.join(process.cwd(), 'vault');
 
@@ -48,6 +49,7 @@ function walk(dir: string, acc: string[] = []): string[] {
  * disk until this reconciles them back into Meridian's index.
  */
 export function scanVault(): ScannedNote[] {
+  if (!vaultAvailable()) return [];
   const files = walk(VAULT_PATH);
   return files.map((full) => {
     const raw = fs.readFileSync(full, 'utf-8');
@@ -64,6 +66,8 @@ export function scanVault(): ScannedNote[] {
 }
 
 export function vaultFileExists(vaultPath: string): boolean {
+  // Without a disk there is nothing to be "missing from" — don't flag every note.
+  if (!vaultAvailable()) return true;
   return fs.existsSync(path.join(VAULT_PATH, vaultPath));
 }
 

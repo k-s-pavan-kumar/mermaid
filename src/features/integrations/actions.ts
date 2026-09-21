@@ -6,15 +6,12 @@ import { getSessionEmail } from '@/lib/auth/session';
 import { PROVIDERS } from './registry';
 import type { Integration } from './types';
 import type { ProjectMetric } from '@/features/projects/types';
+import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
   if (!email) throw new Error('Not authenticated');
   return email;
-}
-
-function newId(prefix: string): string {
-  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 export async function connectIntegration(projectId: string, formData: FormData): Promise<void> {

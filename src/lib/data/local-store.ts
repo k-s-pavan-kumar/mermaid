@@ -58,6 +58,7 @@ export function writeDb(db: LocalDB): void {
 export interface TableOps<T> {
   all(): Promise<T[]>;
   find(id: string): Promise<T | undefined>;
+  findBy(column: keyof T & string, value: unknown): Promise<T | undefined>;
   where(pred: (row: T) => boolean): Promise<T[]>;
   insert(row: T): Promise<T>;
   update(id: string, patch: Partial<T>): Promise<T | undefined>;
@@ -79,6 +80,9 @@ export function table<T extends { id: string }>(name: keyof LocalDB): TableOps<T
     },
     async find(id: string): Promise<T | undefined> {
       return rowsOf(readDb()).find((r) => r.id === id);
+    },
+    async findBy(column: keyof T & string, value: unknown): Promise<T | undefined> {
+      return rowsOf(readDb()).find((r) => r[column] === value);
     },
     async where(pred: (row: T) => boolean): Promise<T[]> {
       return rowsOf(readDb()).filter(pred);
