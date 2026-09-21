@@ -65,6 +65,36 @@ export async function logExpense(formData: FormData): Promise<void> {
 }
 
 /**
+ * Saves a new expense category so it shows up in every category picker from
+ * now on. Case-insensitive: typing "food" when "Food" exists (built-in or
+ * already saved) just returns the existing name instead of adding a twin.
+ * Returns the name to select.
+ */
+export async function addCategory(rawName: string): Promise<string> {
+  const owner = await requireOwner();
+  const name = String(rawName ?? '').trim().replace(/\s+/g, ' ').slice(0, 40);
+  if (!name) throw new Error('Category name is empty');
+
+  const builtIn = (EXPENSE_CATEGORIES as readonly string[]).find((c) => c.toLowerCase() === name.toLowerCase());
+  if (builtIn) return builtIn;
+
+  const existing = await table<FinanceCategory>('finance_categories').where(
+    (c) => c.owner_id === owner && c.name.toLowerCase() === name.toLowerCase()
+  );
+  if (existing.length > 0) return existing[0]!.name;
+
+  await table<FinanceCategory>('finance_categories').insert({
+    id: newId(),
+    owner_id: owner,
+    name,
+    created_at: new Date().toISOString(),
+  });
+  revalidatePath('/daily-finance');
+  revalidatePath('/daily-finance/dues');
+  return name;
+}
+
+/**
  * Adds (or, matched case-insensitively, no-ops on) a keyword → category
  * matching rule — "bike" always rolls up under "Travel", say. Checked
  * client-side against whatever label the person types while logging an

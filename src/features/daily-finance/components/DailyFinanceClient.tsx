@@ -8,7 +8,7 @@ import { EXPENSE_CATEGORIES, matchCategoryForLabel } from '../types';
 import {
   logExpense, deleteFinanceEntry, logSalary,
   createObligation, settleObligation, deleteObligation,
-  addCategoryRule, deleteCategoryRule,
+  addCategoryRule, deleteCategoryRule, addCategory,
 } from '../actions';
 
 function fmt(n: number, ccy = 'INR') {
@@ -346,15 +346,13 @@ function AddExpenseModal({ onClose, categories, rules }: { onClose: () => void; 
           </div>
           <div style={{ marginTop: 12 }}>
             <label className="field-label" htmlFor="category">Category</label>
-            <input id="category" name="category" list="df-category-options-expense" required style={{ width: '100%' }}
-              placeholder="Pick one or type a new label"
-              value={category}
-              onChange={(e) => { setCategory(e.target.value); setCategoryTouched(true); }} />
+            <CategorySelect id="category" name="category" categories={categories} value={category}
+              onChange={(v) => { setCategory(v); setCategoryTouched(true); }} />
             <datalist id="df-category-options-expense">
               {categories.map((c) => <option key={c} value={c} />)}
             </datalist>
             <p className="text-muted" style={{ fontSize: 11.5, margin: '4px 0 0' }}>
-              Type any label — new ones are saved for next time.{' '}
+              Pick a category, or choose “+ Add new category” to save your own.{' '}
               <button type="button" className="link-btn" style={{ fontSize: 11.5 }} onClick={() => setRulesOpen((v) => !v)}>
                 {rulesOpen ? 'Hide' : 'Manage'} matching rules
               </button>
@@ -440,6 +438,7 @@ function AddSalaryModal({ onClose }: { onClose: () => void }) {
 export function AddObligationModal({ onClose, categories }: { onClose: () => void; categories: string[] }) {
   const [cadence, setCadence] = useState<'monthly' | 'one_time'>('monthly');
   const [direction, setDirection] = useState<'payable' | 'receivable'>('payable');
+  const [dueCategory, setDueCategory] = useState('');
   return (
     <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal">
@@ -491,10 +490,7 @@ export function AddObligationModal({ onClose, categories }: { onClose: () => voi
           )}
           <div style={{ marginTop: 12 }}>
             <label className="field-label" htmlFor="o-category">Category</label>
-            <input id="o-category" name="category" list="df-category-options-due" required placeholder="e.g. Education" style={{ width: '100%' }} />
-            <datalist id="df-category-options-due">
-              {categories.map((c) => <option key={c} value={c} />)}
-            </datalist>
+            <CategorySelect id="o-category" name="category" categories={categories} value={dueCategory} onChange={setDueCategory} />
           </div>
           <div style={{ marginTop: 12 }}>
             <label className="field-label" htmlFor="o-note">Note</label>
@@ -557,5 +553,81 @@ export function SettleObligationModal({ view, onClose, money }: { view: Obligati
         </form>
       </div>
     </div>
+  );
+}
+
+/** A real dropdown of every category, ending in "+ Add new category…", which
+ *  swaps in a small input. Saving writes the category to the database (so it
+ *  appears in every picker from then on) and selects it straight away. */
+function CategorySelect({ id, name, categories, value, onChange }: {
+  id: string; name: string; categories: string[]; value: string; onChange: (v: string) => void;
+}) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [added, setAdded] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // Everything the person can pick, de-duplicated case-insensitively: the
+  // list from the server, categories added this session (before the page
+  // refresh catches up), and the current value if a matching rule set it.
+  const options = useMemo(() => {
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const c of [...categories, ...added, ...(value ? [value] : [])]) {
+      const k = c.toLowerCase();
+      if (!seen.has(k)) { seen.add(k); out.push(c); }
+    }
+    return out;
+  }, [categories, added, value]);
+
+  async function commit() {
+    const trimmed = draft.trim();
+    if (!trimmed || saving) return;
+    setSaving(true);
+    setError('');
+    try {
+      const saved = await addCategory(trimmed);
+      setAdded((a) => [...a, saved]);
+      onChange(saved);
+      setDraft('');
+      setAdding(false);
+    } catch {
+      setError('Could not save that category — try again.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      {/* The select itself carries no name: the hidden input below is what
+          gets submitted, so the "+ Add new" sentinel never reaches the server.
+          If the form is submitted mid-typing, the typed name is used (the
+          server saves it as a category too). */}
+      <input type="hidden" name={name} value={adding ? draft.trim() : value} />
+      <select id={id} required={!adding} value={adding ? '__new__' : value} style={{ width: '100%' }}
+        onChange={(e) => {
+          if (e.target.value === '__new__') { setAdding(true); setError(''); }
+          else { setAdding(false); onChange(e.target.value); }
+        }}>
+        <option value="" disabled>Select a category</option>
+        {options.map((c) => <option key={c} value={c}>{c}</option>)}
+        <option value="__new__">+ Add new category…</option>
+      </select>
+      {adding && (
+        <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
+          <input type="text" autoFocus required placeholder="New category name" maxLength={40}
+            value={draft} onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void commit(); } }}
+            style={{ flex: 1, fontSize: 13 }} />
+          <button type="button" className="btn" style={{ fontSize: 12.5 }} disabled={saving || !draft.trim()} onClick={() => void commit()}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+          <button type="button" className="btn-ghost" style={{ fontSize: 12.5 }} onClick={() => { setAdding(false); setDraft(''); setError(''); }}>Cancel</button>
+        </div>
+      )}
+      {error && <p style={{ fontSize: 11.5, margin: '4px 0 0', color: 'var(--crimson)' }}>{error}</p>}
+    </>
   );
 }
