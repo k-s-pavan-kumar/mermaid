@@ -20,7 +20,9 @@
     "verify:dump-date": "tsx scripts/verify-dump-date.ts",
     "verify:overdue": "tsx scripts/verify-overdue.ts",
     "supabase:types": "supabase gen types typescript --project-id \"$SUPABASE_PROJECT_ID\" --schema public > src/types/database.types.ts",
-    "verify:new-features": "tsx scripts/verify-new-features.ts"
+    "verify:new-features": "tsx scripts/verify-new-features.ts",
+    "verify:project-rate": "tsx scripts/verify-project-rate.ts",
+    "verify:retainer": "tsx scripts/verify-retainer.ts"
   },
   "dependencies": {
     "next": "^15.0.0",

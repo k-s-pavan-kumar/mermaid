@@ -6,6 +6,8 @@ import type { Task } from '@/features/today/types';
 import { todayIso, shiftIso } from '@/lib/tz/today';
 import { getDaySpend, weekStartOf, revenueIn } from '@/features/dashboard/queries';
 import { getTargetsHistory, pickTargets } from '@/features/settings/queries';
+import type { Client } from '@/features/clients/types';
+import { retainerMonths, retainerSummary, daysBetweenIso } from '@/features/retainer/logic';
 
 // Notifications are DERIVED from existing data rather than stored. Nothing
 // writes an "alert" row — the rules below read the same tables the rest of
@@ -206,6 +208,40 @@ async function deriveAlerts(ownerId: string): Promise<DerivedAlert[]> {
         href: '/dashboard',
         daysOut: null,
       });
+    }
+  }
+
+  // 8. Monthly retainer payments not received. Only active clients; one alert
+  // per client. The id includes the overdue months, so a NEW missed month
+  // raises a fresh alert even if an earlier one was dismissed.
+  {
+    const clients = await table<Client>('clients').where((c) => c.owner_id === ownerId && c.status === 'active' && c.billing_type === 'monthly');
+    for (const c of clients) {
+      const months = retainerMonths(c, invoices.filter((i) => i.client_id === c.id), todayDate);
+      const overdue = months.filter((m) => m.state === 'overdue');
+      if (overdue.length > 0) {
+        const sum = retainerSummary(overdue).overdueTotal;
+        alerts.push({
+          id: `retainer-overdue-${c.id}-${overdue.map((m) => m.period).join('_')}`,
+          level: overdue.length > 1 ? 'critical' : 'warning',
+          title: `${c.name}: ${overdue.length} monthly payment${overdue.length > 1 ? 's' : ''} not received`,
+          detail: `${overdue.map((m) => m.label).join(', ')} · ₹${sum.toLocaleString('en-IN')}`,
+          href: `/clients/${c.id}?tab=retainer`,
+          daysOut: -Math.max(...overdue.map((m) => daysBetweenIso(m.dueDate, todayDate))),
+        });
+      }
+      const soon = months.find((m) => m.state === 'pending' && daysBetweenIso(todayDate, m.dueDate) <= 3);
+      if (soon) {
+        const d = daysBetweenIso(todayDate, soon.dueDate);
+        alerts.push({
+          id: `retainer-due-${c.id}-${soon.period}`,
+          level: 'info',
+          title: `${c.name}: ${soon.label} payment due ${d === 0 ? 'today' : `in ${d}d`}`,
+          detail: `₹${soon.amount.toLocaleString('en-IN')} monthly retainer`,
+          href: `/clients/${c.id}?tab=retainer`,
+          daysOut: d,
+        });
+      }
     }
   }
 

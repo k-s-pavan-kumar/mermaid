@@ -15,6 +15,14 @@ export interface Client {
    *  per hour). Pre-fills the first line of a new quote/invoice and drives
    *  the "left to invoice" figure on the client page. */
   project_cost: number | null;
+  /** 'project' = one fixed project cost; 'monthly' = recurring retainer (e.g. digital marketing). */
+  billing_type: BillingType;
+  /** Agreed amount per month, for monthly clients. */
+  monthly_fee: number | null;
+  /** First month billed, 'YYYY-MM-01'. Months before it are never expected. */
+  retainer_start: string | null;
+  /** Day of the month the payment is due (1–28). After it, an unreceived month is overdue. */
+  retainer_due_day: number | null;
   status: ClientStatus;
   notes: string | null;
   /** Random token for the read-only client portal link. Rotating it
@@ -22,6 +30,8 @@ export interface Client {
   portal_token: string | null;
   created_at: string;
 }
+
+export type BillingType = 'project' | 'monthly';
 
 export type ClientStatus = 'active' | 'paused' | 'past' | 'lead';
 
@@ -40,7 +50,8 @@ export type WorkType =
   | 'teaching'
   | 'consulting'
   | 'maintenance'
-  | 'content';
+  | 'content'
+  | 'marketing';
 
 export const WORK_TYPE_LABEL: Record<WorkType, string> = {
   web: 'Web development',
@@ -51,6 +62,7 @@ export const WORK_TYPE_LABEL: Record<WorkType, string> = {
   consulting: 'Consulting',
   maintenance: 'Maintenance / retainer',
   content: 'Content',
+  marketing: 'Digital marketing',
 };
 
 export const WORK_TYPE_COLOR: Record<WorkType, string> = {
@@ -62,6 +74,7 @@ export const WORK_TYPE_COLOR: Record<WorkType, string> = {
   consulting: 'var(--pine)',
   maintenance: 'var(--rust)',
   content: 'var(--violet)',
+  marketing: 'var(--plumrose)',
 };
 
 export const WORK_TYPES = Object.keys(WORK_TYPE_LABEL) as WorkType[];

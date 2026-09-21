@@ -51,6 +51,8 @@ export interface Quote extends BillingDoc {
 
 export interface Invoice extends BillingDoc {
   quote_id: string | null;
+  /** 'YYYY-MM' — set only on invoices made by the monthly-retainer flow, one per client per month. */
+  period?: string | null;
   status: 'draft' | 'pending' | 'paid' | 'overdue';
   due_at: string | null;
   paid_at: string | null;

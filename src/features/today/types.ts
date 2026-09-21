@@ -29,6 +29,12 @@ export interface Task {
    * existed.
    */
   category?: string | null;
+  /**
+   * Minutes actually worked on this task (not the planned block length).
+   * Set by hand on the project's to-do tab and topped up automatically by
+   * every timer session finished on the task. Absent means 0.
+   */
+  logged_minutes?: number;
   done: boolean;
   /**
    * The date this task was picked as the day's ONE thing. At most one task

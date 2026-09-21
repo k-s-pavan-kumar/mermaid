@@ -33,7 +33,10 @@ import { ProjectTypePicker } from '@/features/projects/components/ProjectTypePic
 import { getClients } from '@/features/clients/queries';
 import { TYPE_COLOR, TYPE_LABEL, projectTypes, hasType } from '@/lib/project-colors';
 import { getTasksForProject } from '@/features/today/queries';
-import { addProjectTask, toggleTaskDone } from '@/features/today/actions';
+import { addProjectTask, toggleTaskDone, setTaskLoggedHours } from '@/features/today/actions';
+import { projectTime, fmtHours } from '@/features/projects/time';
+import { table } from '@/lib/data';
+import type { FocusSession } from '@/features/today/types';
 import { fmtRange } from '@/features/today/time';
 
 const inr = (n: number) => '₹' + n.toLocaleString('en-IN');
@@ -87,6 +90,10 @@ export default async function ProjectDetailPage({
   const invoiced = project.invoices.filter((i) => i.status !== 'draft').reduce((s, i) => s + grandTotal(i), 0);
   const paid = project.invoices.filter((i) => i.status === 'paid').reduce((s, i) => s + grandTotal(i), 0);
 
+  const sessions = await table<FocusSession>('focus_sessions').where((s) => s.project_id === id);
+  const bountyPaid = project.submissions.reduce((s, x) => s + (x.payout ?? 0), 0);
+  const time = projectTime({ tasks, sessions, invoiced, collected: paid + bountyPaid });
+
   const deleteAction = (
     <form action={async () => { 'use server'; await deleteProjectAndReturn(id); }}>
       <SubmitButton
@@ -118,6 +125,28 @@ export default async function ProjectDetailPage({
         </select>
         <SubmitButton className="btn-ghost" pendingLabel="Saving…">Save</SubmitButton>
       </form>
+
+      <div className="stat-row">
+        <div className="stat-box">
+          <div className="lbl">Hours worked</div>
+          <div className="val">{fmtHours(time.hours)}</div>
+          <div className="text-muted" style={{ fontSize: 11.5 }}>from task time + timer</div>
+        </div>
+        <div className="stat-box">
+          <div className="lbl">Invoiced</div>
+          <div className="val">{inr(invoiced)}</div>
+        </div>
+        <div className="stat-box">
+          <div className="lbl">Rate / hr · invoiced</div>
+          <div className="val">{time.rateInvoiced ? inr(time.rateInvoiced) : '—'}</div>
+          <div className="text-muted" style={{ fontSize: 11.5 }}>{time.hours > 0 ? 'invoiced ÷ hours' : 'log hours on the To-do tab'}</div>
+        </div>
+        <div className="stat-box">
+          <div className="lbl">Rate / hr · collected</div>
+          <div className="val" style={{ color: 'var(--sage)' }}>{time.rateCollected ? inr(time.rateCollected) : '—'}</div>
+          <div className="text-muted" style={{ fontSize: 11.5 }}>paid ÷ hours</div>
+        </div>
+      </div>
 
       <div className="tab-row">
         {tabs.map((t) => (
@@ -163,8 +192,21 @@ export default async function ProjectDetailPage({
                       {t.title}
                     </span>
                   </span>
-                  <span className="text-muted" style={{ fontSize: 11.5, flexShrink: 0 }}>
-                    {t.scheduled_date ? `${t.scheduled_date} · ${fmtRange(t)}` : 'Unscheduled'}
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                    <form
+                      action={async (fd: FormData) => { 'use server'; await setTaskLoggedHours(t.id, fd); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                      title="Hours actually worked on this task"
+                    >
+                      <input name="hours" type="number" min={0} max={2000} step="0.25"
+                        defaultValue={Math.round(((t.logged_minutes ?? 0) / 60) * 100) / 100}
+                        aria-label={`Hours worked on ${t.title}`} style={{ width: 64, padding: '4px 6px', fontSize: 12 }} />
+                      <span className="text-muted" style={{ fontSize: 11 }}>h</span>
+                      <SubmitButton className="btn-link" pendingLabel="…">Save</SubmitButton>
+                    </form>
+                    <span className="text-muted" style={{ fontSize: 11.5 }}>
+                      {t.scheduled_date ? `${t.scheduled_date} · ${fmtRange(t)}` : 'Unscheduled'}
+                    </span>
                   </span>
                 </div>
               ))}
@@ -176,7 +218,8 @@ export default async function ProjectDetailPage({
             <SubmitButton className="btn-inline" pendingLabel="Adding…">Add</SubmitButton>
           </form>
           <p className="text-muted text-sm">
-            Unscheduled tasks show up in Today's brain dump tagged with this project. Scheduling or
+            Enter the hours you actually worked next to each task — the rate boxes above are invoiced/collected
+            money ÷ these hours (timer sessions on a task are added automatically). Unscheduled tasks show up in Today's brain dump tagged with this project. Scheduling or
             completing them there updates this list too — it's the same record either way.
           </p>
         </div>

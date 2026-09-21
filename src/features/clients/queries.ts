@@ -6,6 +6,8 @@ import type { Note } from '@/features/notes/types';
 import type { Meeting } from '@/features/meetings/types';
 import { getBillingForClient } from '@/features/billing/queries';
 import { grandTotal } from '@/features/billing/types';
+import type { FocusSession } from '@/features/today/types';
+import { projectTime } from '@/features/projects/time';
 
 export async function getClients(ownerId: string): Promise<Client[]> {
   const clients = await table<Client>('clients').where((c) => c.owner_id === ownerId);
@@ -36,11 +38,12 @@ export async function getClientWorkspace(clientId: string) {
   const projects = await table<Project>('projects').where((p) => p.client_id === clientId);
   const projectIds = projects.map((p) => p.id);
 
-  const [tasks, notes, meetings, billing] = await Promise.all([
+  const [tasks, notes, meetings, billing, sessions] = await Promise.all([
     table<Task>('tasks').where((t) => !!t.project_id && projectIds.includes(t.project_id)),
     table<Note>('notes').where((n) => n.client_id === clientId || (!!n.project_id && projectIds.includes(n.project_id))),
     table<Meeting>('meetings').where((m) => m.client_id === clientId),
     getBillingForClient(clientId, projectIds),
+    table<FocusSession>('focus_sessions').where((s) => !!s.project_id && projectIds.includes(s.project_id)),
   ]);
 
   const invoiced = billing.invoices
@@ -59,5 +62,6 @@ export async function getClientWorkspace(clientId: string) {
     invoices: billing.invoices,
     quotes: billing.quotes,
     money: { invoiced, paid, outstanding: Math.round((invoiced - paid) * 100) / 100 },
+    time: projectTime({ tasks, sessions, invoiced, collected: paid, agreedCost: client.project_cost }),
   };
 }

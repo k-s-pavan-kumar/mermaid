@@ -232,6 +232,33 @@ export async function logFocusSession(input: {
     note: input.note ?? null,
   });
 
+  // Roll the time into the task's own total so the project's hours and
+  // working rate include it. (Sessions with a task are counted here only —
+  // see projectTime() — so nothing is counted twice.)
+  if (input.taskId) {
+    const task = await table<Task>('tasks').find(input.taskId);
+    if (task) {
+      await table<Task>('tasks').update(task.id, {
+        logged_minutes: (task.logged_minutes ?? 0) + Math.round(input.completedMinutes),
+      });
+      if (task.project_id) revalidatePath(`/projects/${task.project_id}`);
+    }
+  }
+
   revalidatePath('/today');
   revalidatePath('/calendar');
+}
+
+/**
+ * Set the total hours worked on a task (e.g. 1.5). It sets rather than adds,
+ * so a wrong entry is fixed by typing the right number.
+ */
+export async function setTaskLoggedHours(id: string, formData: FormData): Promise<void> {
+  await requireOwner();
+  const hours = Number(String(formData.get('hours') ?? '').trim());
+  if (!Number.isFinite(hours) || hours < 0 || hours > 2000) return;
+
+  const updated = await table<Task>('tasks').update(id, { logged_minutes: Math.round(hours * 60) });
+  revalidateTaskSurfaces(updated?.project_id ?? null);
+  if (updated?.project_id) revalidatePath('/clients', 'layout');
 }

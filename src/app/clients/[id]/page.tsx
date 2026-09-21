@@ -21,10 +21,19 @@ import { SkillPanel } from '@/features/assistant/components/SkillPanel';
 import { skillCards } from '@/features/assistant/skills';
 import { runSkillAction } from '@/features/assistant/actions';
 
+import { fmtHours } from '@/features/projects/time';
+import { BillingFields } from '@/features/clients/components/BillingFields';
+import { markRetainerReceived, undoRetainerReceived } from '@/features/retainer/actions';
+import { retainerMonths, retainerSummary } from '@/features/retainer/logic';
+import { todayIso } from '@/lib/tz/today';
 const money = (n: number) => '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
+
+const STATE_LABEL = { received: 'Received', pending: 'Pending', overdue: 'Overdue' } as const;
+const STATE_TAG = { received: 'ontrack', pending: 'review', overdue: 'risk' } as const;
 
 const TABS: Record<string, string> = {
   overview: 'Overview',
+  retainer: 'Monthly payments',
   work: 'Work',
   meetings: 'Meetings',
   billing: 'Billing',
@@ -59,9 +68,16 @@ export default async function ClientWorkspacePage({
   const workspace = await getClientWorkspace(id);
   if (!workspace || workspace.client.owner_id !== email) notFound();
 
-  const { client, projects, tasks, notes, meetings, invoices, quotes, money: totals } = workspace;
+  const { client, projects, tasks, notes, meetings, invoices, quotes, money: totals, time } = workspace;
   const [settings, allProjects] = await Promise.all([getSettings(email), getProjects()]);
-  const activeTab = tab && tab in TABS ? tab : 'overview';
+  const isMonthly = client.billing_type === 'monthly';
+  // The Monthly payments tab only exists for retainer clients.
+  const visibleTabs = Object.fromEntries(Object.entries(TABS).filter(([k]) => k !== 'retainer' || isMonthly));
+  const activeTab = tab && tab in visibleTabs ? tab : 'overview';
+  const today = todayIso();
+  const months = retainerMonths(client, invoices, today);
+  const retainer = retainerSummary(months);
+  const thisMonth = months[0];
   const openTasks = tasks.filter((t) => !t.done);
   const workTypes = clientWorkTypes(client);
 
@@ -93,9 +109,19 @@ export default async function ClientWorkspacePage({
             <ClientTime timezone={client.timezone} />
             {client.email && <> · {client.email}</>}
             {client.project_cost ? <> · {money(client.project_cost)} total project cost</> : null}
+            {isMonthly && client.monthly_fee ? <> · {money(client.monthly_fee)}/month retainer</> : null}
           </div>
         </div>
       </div>
+
+      {time.hours > 0 && (
+        <div className="text-muted" style={{ fontSize: 12.5, marginBottom: 12 }}>
+          <strong style={{ color: 'var(--ink)' }}>{fmtHours(time.hours)}</strong> worked across their projects
+          {time.rateInvoiced ? <> · {money(time.rateInvoiced)}/hr on invoiced</> : null}
+          {time.rateCollected ? <> · {money(time.rateCollected)}/hr on collected</> : null}
+          {time.rateOnAgreedCost ? <> · {money(time.rateOnAgreedCost)}/hr on agreed project cost</> : null}
+        </div>
+      )}
 
       <div className={client.project_cost ? 'stat-row' : 'stat-row three'}>
         {client.project_cost ? (
@@ -111,10 +137,71 @@ export default async function ClientWorkspacePage({
       </div>
 
       <div className="tab-row">
-        {Object.entries(TABS).map(([key, label]) => (
+        {Object.entries(visibleTabs).map(([key, label]) => (
           <a key={key} href={`/clients/${id}?tab=${key}`} className={activeTab === key ? 'active' : ''}>{label}</a>
         ))}
       </div>
+
+      {isMonthly && activeTab !== 'retainer' && thisMonth && (
+        <div className="text-muted" style={{ fontSize: 12.5, marginBottom: 12 }}>
+          {thisMonth.label}: <span className={`tag ${STATE_TAG[thisMonth.state]}`}>{STATE_LABEL[thisMonth.state]}</span>
+          {retainer.overdueCount > 0 && <> · <a href={`/clients/${id}?tab=retainer`}>{retainer.overdueCount} month{retainer.overdueCount > 1 ? 's' : ''} overdue ({money(retainer.overdueTotal)})</a></>}
+        </div>
+      )}
+
+      {activeTab === 'retainer' && isMonthly && (
+        <div>
+          {!client.monthly_fee && (
+            <p className="text-muted text-sm">Set this client&apos;s monthly fee under the <a href={`/clients/${id}?tab=settings`}>Details</a> tab so each month knows what to expect.</p>
+          )}
+          <div className="stat-row three">
+            <div className="stat-box"><div className="lbl">Received</div><div className="val" style={{ color: 'var(--sage)' }}>{money(retainer.receivedTotal)}</div>
+              <div className="text-muted" style={{ fontSize: 11.5 }}>{retainer.receivedCount} month{retainer.receivedCount === 1 ? '' : 's'}</div></div>
+            <div className="stat-box"><div className="lbl">Overdue</div><div className="val" style={{ color: 'var(--crimson)' }}>{money(retainer.overdueTotal)}</div>
+              <div className="text-muted" style={{ fontSize: 11.5 }}>{retainer.overdueCount} month{retainer.overdueCount === 1 ? '' : 's'} not received</div></div>
+            <div className="stat-box"><div className="lbl">Due this month</div><div className="val">{money(retainer.pendingTotal)}</div>
+              <div className="text-muted" style={{ fontSize: 11.5 }}>{retainer.pendingCount ? 'not yet due' : 'nothing pending'}</div></div>
+          </div>
+
+          {months.length === 0 ? (
+            <div className="card"><div className="empty"><div className="big">No months yet</div>Billing starts on the &ldquo;first month billed&rdquo; you set under Details.</div></div>
+          ) : (
+            <div className="card" style={{ padding: '4px 18px' }}>
+              {months.map((m) => (
+                <div key={m.period} className="list-row" style={{ flexWrap: 'wrap', gap: 8 }}>
+                  <span style={{ minWidth: 150 }}>
+                    <strong>{m.label}</strong>
+                    <div className="text-muted" style={{ fontSize: 11.5 }}>due {m.dueDate}</div>
+                  </span>
+                  <span className="mono" style={{ minWidth: 90 }}>{money(m.amount)}</span>
+                  <span className={`tag ${STATE_TAG[m.state]}`}>{STATE_LABEL[m.state]}</span>
+
+                  {m.state === 'received' ? (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 12, marginLeft: 'auto' }}>
+                      <span className="text-muted" style={{ fontSize: 12 }}>
+                        received {m.receivedOn}
+                        {m.invoice && <> · <a href={`/billing/invoices/${m.invoice.id}`}>{m.invoice.number}</a></>}
+                      </span>
+                      <form action={async () => { 'use server'; await undoRetainerReceived(id, m.period); }}>
+                        <SubmitButton className="btn-link" pendingLabel="…" confirm={`Mark ${m.label} as NOT received? This removes its invoice and ledger entry.`}>Undo</SubmitButton>
+                      </form>
+                    </span>
+                  ) : (
+                    <form
+                      action={async (fd: FormData) => { 'use server'; await markRetainerReceived(id, m.period, fd); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto', flexWrap: 'wrap' }}
+                    >
+                      <input name="received_on" type="date" defaultValue={today} aria-label={`Date ${m.label} was received`} style={{ padding: '4px 6px', fontSize: 12 }} />
+                      <input name="amount" type="number" min={1} step="0.01" defaultValue={client.monthly_fee ?? ''} required aria-label={`Amount received for ${m.label}`} style={{ width: 96, padding: '4px 6px', fontSize: 12 }} />
+                      <SubmitButton className="btn-inline" pendingLabel="Saving…">Mark received</SubmitButton>
+                    </form>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {activeTab === 'overview' && (
         <div className="grid-2-eq">
@@ -437,11 +524,8 @@ export default async function ClientWorkspacePage({
               <label className="field-label">Type of work</label>
               <WorkTypePicker initial={workTypes} />
             </div>
+            <BillingFields initial={client} />
             <div className="grid-2-eq">
-              <div>
-                <label className="field-label" htmlFor="project_cost">Total project cost (₹)</label>
-                <input id="project_cost" name="project_cost" type="number" min={0} defaultValue={client.project_cost ?? ''} style={{ width: '100%' }} />
-              </div>
               <div>
                 <label className="field-label" htmlFor="status">Relationship</label>
                 <select id="status" name="status" defaultValue={client.status} style={{ width: '100%' }}>

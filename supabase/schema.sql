@@ -101,8 +101,14 @@ create table clients (
   -- What you do for them. Multi-valued because one client is rarely one
   -- kind of work: a web build becomes a retainer and books a training day.
   work_types   text[] not null default '{}'
-                 check (work_types <@ array['web','mobile','design','security','teaching','consulting','maintenance','content']::text[]),
+                 check (work_types <@ array['web','mobile','design','security','teaching','consulting','maintenance','content','marketing']::text[]),
   project_cost numeric,                       -- agreed TOTAL project cost (fixed price), pre-fills the first invoice/quote line
+  -- How they pay: one fixed project cost, or a monthly retainer (e.g. digital
+  -- marketing). Each received month is a paid invoice carrying invoices.period.
+  billing_type     text not null default 'project' check (billing_type in ('project','monthly')),
+  monthly_fee      numeric,
+  retainer_start   date,                        -- first month billed (the 1st of that month)
+  retainer_due_day int check (retainer_due_day between 1 and 28),
   status       text not null default 'active'
                  check (status in ('lead','active','paused','past')),
   notes        text,
@@ -197,6 +203,7 @@ create table invoices (
   project_id   uuid references projects(id) on delete cascade,
   client_id    uuid references clients(id) on delete set null,
   quote_id     uuid references quotes(id) on delete set null,
+  period       text check (period ~ '^[0-9]{4}-(0[1-9]|1[0-2])$'),  -- 'YYYY-MM', monthly-retainer invoices only
   stream       text not null default 'freelance' check (stream in
                  ('freelance','teaching','product','bounty','other')),
   number       text not null,
@@ -218,6 +225,8 @@ create table invoices (
 -- The Dashboard's year/month/week revenue figures filter paid invoices by
 -- owner + paid_at.
 create index invoices_owner_paid_at_idx on invoices(owner_id, paid_at) where status = 'paid';
+-- One retainer invoice per client per month.
+create unique index invoices_client_period_idx on invoices(client_id, period) where period is not null;
 create table meetings (
   id            uuid primary key default uuid_generate_v4(),
   owner_id      uuid not null references auth.users(id) default auth.uid(),
@@ -265,6 +274,10 @@ create table tasks (
   -- Settings. Overrides the project's type in the 24-hour split when set;
   -- null falls back to the project's type exactly as before this existed.
   category         text,
+  -- Minutes actually worked (not the planned block). Typed on the project's
+  -- To-do tab and topped up by every timer session finished on the task;
+  -- summed per project to get the project's hours and working rate.
+  logged_minutes   int not null default 0 check (logged_minutes >= 0),
   done             boolean not null default false,
   -- The date this task was picked as that day's ONE thing. A date rather
   -- than a boolean so yesterday's choice doesn't silently become today's.

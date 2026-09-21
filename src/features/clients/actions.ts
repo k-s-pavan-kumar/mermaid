@@ -5,7 +5,8 @@ import { redirect } from 'next/navigation';
 import crypto from 'crypto';
 import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
-import type { Client, ClientStatus, WorkType } from './types';
+import type { BillingType, Client, ClientStatus, WorkType } from './types';
+import { todayIso } from '@/lib/tz/today';
 import { WORK_TYPE_LABEL } from './types';
 import { newId } from '@/lib/id';
 
@@ -24,14 +25,30 @@ function readWorkTypes(formData: FormData): WorkType[] {
 
 function fields(formData: FormData) {
   const costRaw = String(formData.get('project_cost') ?? '').trim();
+  const billing_type: BillingType = String(formData.get('billing_type') ?? '') === 'monthly' ? 'monthly' : 'project';
+  const monthly = billing_type === 'monthly';
+
+  // <input type="month"> posts 'YYYY-MM'; stored as the 1st of that month.
+  const startRaw = String(formData.get('retainer_start') ?? '').trim();
+  const retainer_start = monthly
+    ? /^\d{4}-(0[1-9]|1[0-2])$/.test(startRaw) ? `${startRaw}-01` : `${todayIso().slice(0, 7)}-01`
+    : null;
+  const feeRaw = String(formData.get('monthly_fee') ?? '').trim();
+  const dayRaw = Math.round(Number(formData.get('retainer_due_day') ?? 5)) || 5;
+
   return {
+    billing_type,
+    // Only the fields for the chosen billing type are kept; the other is cleared.
+    project_cost: !monthly && costRaw ? Number(costRaw) || null : null,
+    monthly_fee: monthly && feeRaw ? Number(feeRaw) || null : null,
+    retainer_start,
+    retainer_due_day: monthly ? Math.min(28, Math.max(1, dayRaw)) : null,
     company: String(formData.get('company') ?? '').trim() || null,
     email: String(formData.get('email') ?? '').trim() || null,
     phone: String(formData.get('phone') ?? '').trim() || null,
     address: String(formData.get('address') ?? '').trim() || null,
     timezone: String(formData.get('timezone') ?? 'UTC').trim() || 'UTC',
     work_types: readWorkTypes(formData),
-    project_cost: costRaw ? Number(costRaw) || null : null,
     status: (String(formData.get('status') ?? 'active') as ClientStatus),
     notes: String(formData.get('notes') ?? '').trim() || null,
   };

@@ -6,7 +6,11 @@ import { CLIENT_STATUS_LABEL, WORK_TYPE_COLOR, WORK_TYPE_LABEL, clientWorkTypes,
 import { Shell } from '@/components/Shell';
 import { SubmitButton } from '@/components/SubmitButton';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
+import { BillingFields } from '@/features/clients/components/BillingFields';
 import { WorkTypePicker } from '@/features/clients/components/WorkTypePicker';
+import { getRetainerInvoices } from '@/features/retainer/queries';
+import { retainerMonths } from '@/features/retainer/logic';
+import { todayIso } from '@/lib/tz/today';
 import { ClientTime } from '@/features/clients/components/ClientTime';
 
 const STATUS_TAG: Record<ClientStatus, string> = { active: 'ontrack', paused: 'review', past: 'idea', lead: 'done' };
@@ -15,7 +19,8 @@ export default async function ClientsPage() {
   const email = await getSessionEmail();
   if (!email) redirect('/login');
 
-  const clients = await getClients(email);
+  const [clients, retainerInvoices] = await Promise.all([getClients(email), getRetainerInvoices()]);
+  const today = todayIso();
 
   return (
     <Shell active="clients" title="Clients" crumb="Workspace">
@@ -45,6 +50,20 @@ export default async function ClientsPage() {
               </div>
               <span style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
                 <ClientTime timezone={c.timezone} />
+                {c.billing_type === 'monthly' && (() => {
+                  const cur = retainerMonths(c, retainerInvoices.filter((i) => i.client_id === c.id), today);
+                  const overdue = cur.filter((m) => m.state === 'overdue').length;
+                  const now = cur[0];
+                  if (!now) return null;
+                  const state = overdue > 0 ? 'overdue' : now.state;
+                  return (
+                    <a href={`/clients/${c.id}?tab=retainer`} style={{ textDecoration: 'none' }} title="Monthly payment status">
+                      <span className={`tag ${state === 'received' ? 'ontrack' : state === 'pending' ? 'review' : 'risk'}`}>
+                        {now.label.split(' ')[0]?.slice(0, 3)} · {state === 'received' ? 'Received' : state === 'pending' ? 'Pending' : overdue > 1 ? `${overdue} overdue` : 'Overdue'}
+                      </span>
+                    </a>
+                  );
+                })()}
                 <span className={`tag ${STATUS_TAG[c.status] ?? 'idea'}`}>{CLIENT_STATUS_LABEL[c.status] ?? 'Active'}</span>
               </span>
             </div>
@@ -69,11 +88,8 @@ export default async function ClientsPage() {
           <label className="field-label">Type of work</label>
           <WorkTypePicker />
         </div>
+        <BillingFields />
         <div className="grid-2-eq">
-          <div>
-            <label className="field-label" htmlFor="project_cost">Total project cost (₹)</label>
-            <input id="project_cost" name="project_cost" type="number" min={0} step="1" placeholder="e.g. 50000 — fixed price for the whole project" style={{ width: '100%' }} />
-          </div>
           <div>
             <label className="field-label" htmlFor="status">Relationship</label>
             <select id="status" name="status" defaultValue="active" style={{ width: '100%' }}>

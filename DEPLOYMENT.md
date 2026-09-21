@@ -6,7 +6,9 @@
 
 **Already ran the old schema?** SQL Editor → paste `supabase/migrations/001_production_fixes.sql` → Run.
 Then run `supabase/migrations/002_client_project_cost.sql` (renames the client
-hourly `rate` column to `project_cost`). Both are safe to run more than once.
+hourly `rate` column to `project_cost`). Then `supabase/migrations/003_task_logged_minutes.sql` (hours worked per task, and it credits
+your past timer sessions to their tasks). Finally `supabase/migrations/004_monthly_retainer.sql` (monthly retainer clients and per-month
+payment tracking). All four are safe to run more than once.
 The first fixes: quotes/invoices being rejected when
 raised against a client with no project, three tables that had no row-level
 security, and adds `notes.content`.
