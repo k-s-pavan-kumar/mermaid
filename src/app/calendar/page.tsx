@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionEmail } from '@/lib/auth/session';
-import { getBrainDump } from '@/features/today/queries';
+import { getBrainDump, getDayBlocksRange } from '@/features/today/queries';
 import { scheduleTask, toggleTaskDone } from '@/features/today/actions';
 import { getProjects } from '@/features/projects/queries';
 import { table } from '@/lib/data';
@@ -49,7 +49,7 @@ export default async function CalendarPage({
   const weekStart = weekStartOf(week && /^\d{4}-\d{2}-\d{2}$/.test(week) ? week : realToday);
   const weekEnd = shiftIso(weekStart, 6);
 
-  const [tasks, meetings, unscheduled, projects] = await Promise.all([
+  const [tasks, meetings, unscheduled, projects, dayBlocks] = await Promise.all([
     table<Task>('tasks').where(
       (t) => t.owner_id === email && !!t.scheduled_date && t.scheduled_date! >= weekStart && t.scheduled_date! <= weekEnd
     ),
@@ -58,6 +58,7 @@ export default async function CalendarPage({
     ),
     getBrainDump(email),
     getProjects(),
+    getDayBlocksRange(email, weekStart, weekEnd),
   ]);
 
   return (
@@ -71,6 +72,7 @@ export default async function CalendarPage({
         realToday={realToday}
         tasks={tasks}
         meetings={meetings}
+        dayBlocks={dayBlocks}
         unscheduled={unscheduled.slice(0, 30)}
         projects={projects.map((p) => ({ id: p.id, name: p.name, type: p.type }))}
         scheduleTask={scheduleTask}

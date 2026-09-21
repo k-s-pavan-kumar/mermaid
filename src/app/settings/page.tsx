@@ -11,6 +11,7 @@ import { Shell } from '@/components/Shell';
 import { SubmitButton } from '@/components/SubmitButton';
 import { ActionButton } from '@/components/ActionButton';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
+import InstallPWAButton from '@/components/InstallPWAButton';
 
 const MONTHS = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -41,6 +42,14 @@ export default async function SettingsPage() {
 
   return (
     <Shell active="settings" title="Settings" crumb="Workspace setup">
+      <div className="section-title"><h3>Install</h3></div>
+      <p className="text-muted text-sm" style={{ marginTop: -4 }}>
+        Run Meridian like a native app — its own window/icon, no address bar.
+      </p>
+      <div className="card" style={{ maxWidth: 620 }}>
+        <InstallPWAButton />
+      </div>
+
       <div className="section-title"><h3>Clock widgets</h3></div>
       <p className="text-muted text-sm" style={{ marginTop: -4 }}>
         The strip at the top of every page. Add the zones your clients and students

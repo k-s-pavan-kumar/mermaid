@@ -1,11 +1,12 @@
 'use client';
 
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, useTransition } from 'react';
-import type { Task } from '@/features/today/types';
+import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import type { Task, DayBlock } from '@/features/today/types';
 import type { Meeting } from '@/features/meetings/types';
 import { TYPE_COLOR } from '@/lib/project-colors';
 import { SLOT_MINUTES, startMinutes, durationMinutes, fmtClock } from '@/features/today/time';
+import { DAY_BLOCK_META, segmentsForDay } from '@/features/today/dayblocks';
 
 // Full 24 hours, same as Today — an 8am–9pm window silently hid anything
 // scheduled early or late.
@@ -67,6 +68,7 @@ export function WeekGrid({
   realToday,
   tasks,
   meetings,
+  dayBlocks,
   unscheduled,
   projects,
   scheduleTask,
@@ -76,6 +78,7 @@ export function WeekGrid({
   realToday: string;
   tasks: Task[];
   meetings: Meeting[];
+  dayBlocks: DayBlock[];
   unscheduled: Task[];
   projects: ProjectRef[];
   scheduleTask: (id: string, date: string, hour: number, minute?: number) => Promise<void>;
@@ -99,6 +102,15 @@ export function WeekGrid({
 
   const days = weekDays(weekStart);
   const projectById = new Map(projects.map((p) => [p.id, p]));
+
+  // Sleep / office / travel, per day of the week — same "which part of this
+  // block falls on this day" logic Today uses, so a night that runs past
+  // midnight still shows up as the tail end of the next morning here too.
+  const segmentsByDay = useMemo(() => {
+    const map = new Map(days.map((d) => [d.iso, segmentsForDay(dayBlocks, d.iso)]));
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dayBlocks, weekStart]);
 
   function run(fn: () => Promise<void>) {
     startTransition(async () => {
@@ -149,6 +161,11 @@ export function WeekGrid({
                   const cellMeetings = meetings.filter(
                     (m) => m.starts_at.slice(0, 10) === d.iso && new Date(m.starts_at).getHours() === h
                   );
+                  const hourStart = h * 60;
+                  const hourEnd = hourStart + 60;
+                  const cellBlockSegs = (segmentsByDay.get(d.iso) ?? []).filter(
+                    (s) => s.startMin < hourEnd && s.endMin > hourStart
+                  );
 
                   return (
                     <div
@@ -164,6 +181,29 @@ export function WeekGrid({
                         if (id) run(() => scheduleTask(id, d.iso, h, minute));
                       }}
                     >
+                      {cellBlockSegs.map((s) => {
+                        const meta = DAY_BLOCK_META[s.kind];
+                        const overlapStart = Math.max(s.startMin, hourStart);
+                        const overlapEnd = Math.min(s.endMin, hourEnd);
+                        const showLabel = overlapStart === s.startMin;
+                        return (
+                          <span
+                            key={`${s.block.id}-${h}`}
+                            className="week-dayblock-band"
+                            style={{
+                              top: (overlapStart - hourStart) * PX_PER_MINUTE,
+                              height: (overlapEnd - overlapStart) * PX_PER_MINUTE,
+                              background: meta.color,
+                            }}
+                            title={`${meta.label} · ${fmtClock(s.startMin)}–${fmtClock(s.endMin)}`}
+                          >
+                            {showLabel && (overlapEnd - overlapStart) >= 20 && (
+                              <span className="week-dayblock-label">{meta.emoji} {meta.label}</span>
+                            )}
+                          </span>
+                        );
+                      })}
+
                       {cellTasks.map((t) => {
                         const project = projectById.get(t.project_id ?? '');
                         const accent = project ? TYPE_COLOR[project.type as keyof typeof TYPE_COLOR] : 'var(--pine)';

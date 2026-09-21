@@ -14,7 +14,7 @@ import {
   SLOT_MINUTES, SLOTS_PER_DAY, MIN_DURATION_MINUTES, MAX_DURATION_MINUTES,
   startMinutes, durationMinutes, slotToHourMinute, fmtClock, fmtDuration,
 } from '../time';
-import { DAY_BLOCK_META, DAY_MIN, assignColumns, segmentsForDay } from '../dayblocks';
+import { DAY_BLOCK_META, DAY_MIN, segmentsForDay } from '../dayblocks';
 
 // A full 24-hour day on a HALF-HOUR grid. The old 8am–9pm window quietly
 // refused to hold early mornings and late-night work — which is exactly when
@@ -239,8 +239,9 @@ export function TodayClient({
 
   const scheduled = tasks.filter((t) => t.scheduled_hour !== null);
   const plannedMinutes = scheduled.reduce((n, t) => n + durationMinutes(t), 0);
-  // Sleep / office / travel, laid out in a lane beside the task blocks.
-  const laneSegments = assignColumns(segmentsForDay(dayBlocks, date));
+  // Sleep / office / travel, drawn as full-width translucent bands behind
+  // the task blocks (same day-boundary math Calendar's week view uses).
+  const daySegments = segmentsForDay(dayBlocks, date);
 
   const oneThing = tasks.find((t) => t.focus_date === date) ?? null;
   const dayTasks = tasks.filter((t) => t.scheduled_hour !== null);
@@ -496,28 +497,27 @@ export function TodayClient({
           {/* Foreground overlay — variable-height task blocks positioned by
               time, independent of the row grid underneath, so a block can
               span multiple hours. */}
-          <div className={`timebox-overlay${laneSegments.length > 0 ? ' has-lane' : ''}`} style={{ top: 0 }}>
-            {laneSegments.length > 0 && (
-              <div className="tb-lane">
-                {laneSegments.map(({ seg, col, cols }) => {
-                  const meta = DAY_BLOCK_META[seg.kind];
-                  const top = (seg.startMin / SLOT_MINUTES) * SLOT_HEIGHT;
-                  const height = Math.max(SLOT_HEIGHT - 2, ((seg.endMin - seg.startMin) / SLOT_MINUTES) * SLOT_HEIGHT - 2);
-                  const minutes = seg.endMin - seg.startMin;
-                  return (
-                    <div
-                      key={`${seg.block.id}-${seg.startMin}`}
-                      className={`tb-lane-seg dk-${seg.kind}`}
-                      style={{ top, height, left: `${(col / cols) * 100}%`, width: `calc(${100 / cols}% - 2px)` }}
-                      title={`${meta.label}${seg.block.note ? ` · ${seg.block.note}` : ''} · ${fmtClock(seg.startMin)} – ${seg.endMin >= DAY_MIN ? '12 AM' : fmtClock(seg.endMin)}${seg.continuesFromPrev ? ' (started yesterday)' : ''}${seg.continuesToNext ? ' (continues tomorrow)' : ''}`}
-                    >
-                      <span>{meta.emoji}{height >= 30 && cols === 1 ? ` ${meta.label}` : ''}</span>
-                      {height >= 44 && <span className="tb-lane-dur">{fmtDuration(minutes)}</span>}
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+          <div className="timebox-overlay" style={{ top: 0 }}>
+            {daySegments.map((seg) => {
+              const meta = DAY_BLOCK_META[seg.kind];
+              const top = (seg.startMin / SLOT_MINUTES) * SLOT_HEIGHT;
+              const height = Math.max(SLOT_HEIGHT - 2, ((seg.endMin - seg.startMin) / SLOT_MINUTES) * SLOT_HEIGHT - 2);
+              const minutes = seg.endMin - seg.startMin;
+              return (
+                <div
+                  key={`${seg.block.id}-${seg.startMin}`}
+                  className={`tb-dayblock-band dk-${seg.kind}`}
+                  style={{ top, height }}
+                  title={`${meta.label}${seg.block.note ? ` · ${seg.block.note}` : ''} · ${fmtClock(seg.startMin)} – ${seg.endMin >= DAY_MIN ? '12 AM' : fmtClock(seg.endMin)}${seg.continuesFromPrev ? ' (started yesterday)' : ''}${seg.continuesToNext ? ' (continues tomorrow)' : ''}`}
+                >
+                  {height >= 26 && (
+                    <span className="tb-dayblock-label">
+                      {meta.emoji} {meta.label}{height >= 42 ? ` · ${fmtDuration(minutes)}` : ''}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
             {scheduled.length === 0 && (
               <div className="timebox-empty">
                 <img src="/mascot/sleeping.png" alt="" width={86} height={86} />

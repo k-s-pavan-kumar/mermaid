@@ -107,3 +107,17 @@ export async function getDayBlocks(ownerId: string, date: string): Promise<DayBl
   );
   return rows.sort((a, b) => (a.date === b.date ? a.start_minute - b.start_minute : a.date < b.date ? -1 : 1));
 }
+
+/**
+ * Sleep / travel / office blocks touching any day in [startDate, endDate]
+ * — the week-view equivalent of getDayBlocks. Starts one day early so the
+ * tail of a sleep block logged the night before startDate still shows up
+ * on startDate morning.
+ */
+export async function getDayBlocksRange(ownerId: string, startDate: string, endDate: string): Promise<DayBlock[]> {
+  const from = addDays(startDate, -1);
+  const rows = await table<DayBlock>('day_blocks').where(
+    (b) => b.owner_id === ownerId && b.date >= from && b.date <= endDate
+  );
+  return rows.sort((a, b) => (a.date === b.date ? a.start_minute - b.start_minute : a.date < b.date ? -1 : 1));
+}
