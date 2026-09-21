@@ -438,6 +438,8 @@ function AddSalaryModal({ onClose }: { onClose: () => void }) {
 }
 
 export function AddObligationModal({ onClose, categories }: { onClose: () => void; categories: string[] }) {
+  const [cadence, setCadence] = useState<'monthly' | 'one_time'>('monthly');
+  const [direction, setDirection] = useState<'payable' | 'receivable'>('payable');
   return (
     <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal">
@@ -457,14 +459,14 @@ export function AddObligationModal({ onClose, categories }: { onClose: () => voi
           <div className="grid-2-eq">
             <div>
               <label className="field-label" htmlFor="o-direction">Direction</label>
-              <select id="o-direction" name="direction" required defaultValue="payable" style={{ width: '100%' }}>
+              <select id="o-direction" name="direction" required value={direction} onChange={(e) => setDirection(e.target.value as 'payable' | 'receivable')} style={{ width: '100%' }}>
                 <option value="payable">I need to give (payable)</option>
                 <option value="receivable">Someone owes me (receivable)</option>
               </select>
             </div>
             <div>
               <label className="field-label" htmlFor="o-cadence">Repeats</label>
-              <select id="o-cadence" name="cadence" required defaultValue="monthly" style={{ width: '100%' }}>
+              <select id="o-cadence" name="cadence" required value={cadence} onChange={(e) => setCadence(e.target.value as 'monthly' | 'one_time')} style={{ width: '100%' }}>
                 <option value="monthly">Every month</option>
                 <option value="one_time">One-time</option>
               </select>
@@ -472,15 +474,21 @@ export function AddObligationModal({ onClose, categories }: { onClose: () => voi
           </div>
           <div className="grid-2-eq" style={{ marginTop: 12 }}>
             <div>
-              <label className="field-label" htmlFor="o-amount">Amount to pay</label>
+              <label className="field-label" htmlFor="o-amount">Amount to {direction === 'payable' ? 'pay' : 'receive'}</label>
               <input id="o-amount" name="default_amount" type="number" min={0.01} step="0.01" required placeholder="5000" style={{ width: '100%' }} />
             </div>
             <div>
-              <label className="field-label" htmlFor="o-due">Due date</label>
-              <input id="o-due" name="due_date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} style={{ width: '100%' }} />
-              <p className="text-muted" style={{ fontSize: 11, margin: '3px 0 0' }}>For monthly dues, this day repeats every month.</p>
+              <label className="field-label" htmlFor="o-taken">{direction === 'payable' ? 'Date taken' : 'Date given'}</label>
+              <input id="o-taken" name="taken_date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} style={{ width: '100%' }} />
             </div>
           </div>
+          {cadence === 'monthly' && (
+            <div style={{ marginTop: 12 }}>
+              <label className="field-label" htmlFor="o-due">Due date each month</label>
+              <input id="o-due" name="due_date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} style={{ width: '100%' }} />
+              <p className="text-muted" style={{ fontSize: 11, margin: '3px 0 0' }}>Only the day matters — it repeats every month.</p>
+            </div>
+          )}
           <div style={{ marginTop: 12 }}>
             <label className="field-label" htmlFor="o-category">Category</label>
             <input id="o-category" name="category" list="df-category-options-due" required placeholder="e.g. Education" style={{ width: '100%' }} />

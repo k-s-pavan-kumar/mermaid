@@ -176,12 +176,11 @@ export async function getCategoryRules(ownerId: string): Promise<FinanceCategory
 // Dues (obligations)
 // ---------------------------------------------------------------------------
 
-/** The due date for the period being viewed. A one-time due uses its own
- *  date; a monthly due reuses its day-of-month (clamped, so a due on the
- *  31st lands on the 30th/28th in shorter months). */
+/** The due date for the period being viewed. Only monthly dues have one: it
+ *  reuses the due's day-of-month (clamped, so a due on the 31st lands on the
+ *  30th/28th in shorter months). One-time dues have no date. */
 function periodDueDate(o: FinanceObligation, monthStart: string): string | null {
-  if (!o.due_date) return null;
-  if (o.cadence === 'one_time') return o.due_date;
+  if (o.cadence !== 'monthly' || !o.due_date) return null;
   const day = Number(o.due_date.slice(8, 10));
   const lastDay = Number(monthEndOf(monthStart).slice(8, 10));
   return `${monthStart.slice(0, 7)}-${String(Math.min(Math.max(day, 1), lastDay)).padStart(2, '0')}`;
@@ -210,7 +209,7 @@ export function buildObligationView(
     : 'pending';
   const overdue = status !== 'cleared' && !!dueDate && dueDate < today;
 
-  return { obligation, payments: sorted, need, dueDate, paid, balance, status, overdue };
+  return { obligation, payments: sorted, need, dueDate, takenDate: obligation.taken_date ?? null, paid, balance, status, overdue };
 }
 
 /** Active dues, each with this period's payments, balance and status.

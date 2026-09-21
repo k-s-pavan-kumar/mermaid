@@ -938,10 +938,19 @@ img{max-width:100%;height:auto;}
    Pipeline, Reward Vault, Learning Tracker, Release Stats). */
 .empty .btn{margin-top:12px;}
 .df-dues.wide{font-size:13px;}
-.df-dues.wide th.grp{text-align:center;border-bottom:1px solid var(--border-light);padding-bottom:4px;}
-.df-dues.wide th.sub{font-weight:500;text-transform:none;letter-spacing:0;padding-top:4px;}
-.df-dues.wide .grp-start{border-left:1px solid var(--border-light);}
+.df-dues.wide th,.df-dues.wide td{width:1%;white-space:nowrap;vertical-align:middle;}
+.df-dues.wide th.name,.df-dues.wide td.name{width:auto;min-width:170px;white-space:normal;}
+.df-dues.wide th{padding:8px 12px;}
+.df-dues.wide td{padding:12px;}
+.df-dues.wide th.grp{text-align:center;padding-bottom:2px;}
+.df-dues.wide th.sub{font-weight:500;text-transform:none;letter-spacing:0;padding-top:0;padding-bottom:8px;}
+.df-dues.wide .grp-start{border-left:1px solid var(--border-light);padding-left:20px;}
+.df-dues.wide th.num,.df-dues.wide td.num{text-align:right;}
 .df-dues.wide tbody tr{border-top:1px solid var(--border-light);}
-.df-dues.wide tbody tr.cleared{opacity:.72;}
-.df-dues.wide tbody td{vertical-align:middle;}
-.df-dues.wide tfoot td{padding:10px 8px;font-weight:600;border-top:2px solid var(--border);font-variant-numeric:tabular-nums;}
+.df-dues.wide tbody tr.cleared td{color:var(--muted);}
+.df-scroll{overflow-x:auto;padding:8px 8px 6px;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.df-scroll::-webkit-scrollbar{height:8px;}
+.df-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;}
+.df-dues.wide th.name,.df-dues.wide td.name,.df-dues.wide tfoot td:first-child{position:sticky;left:0;z-index:1;background:var(--surface,#fff);box-shadow:1px 0 0 var(--border-light);}
+.df-dues.wide td.df-due-actions{text-align:right;}
+.df-dues.wide tfoot td{padding:12px;font-weight:600;border-top:2px solid var(--border);font-variant-numeric:tabular-nums;}

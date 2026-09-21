@@ -106,7 +106,7 @@ export function DuesPageClient({
           )}
 
           <p className="text-muted" style={{ fontSize: 12, marginTop: 8, maxWidth: 720, lineHeight: 1.6 }}>
-            Each payment you add posts a real entry to your Daily Finance ledger. Monthly dues start fresh every month;
+            Each payment you add posts a real entry to your Daily Finance ledger. Scroll sideways when there are many payments. Monthly dues start fresh every month;
             use the arrows to look back at earlier months.
           </p>
         </>
@@ -129,7 +129,10 @@ function DuesTable({
 }) {
   // One Amount/Date pair per payment made — as many as the busiest row needs.
   const n = Math.max(1, ...rows.map((r) => r.payments.length));
+  // The monthly due-date column only exists when some row has one.
+  const hasDates = rows.some((r) => r.dueDate);
   const payWord = payable ? 'Payment' : 'Received';
+  const takenWord = payable ? 'Taken on' : 'Given on';
   const needTotal = rows.reduce((t, r) => t + (r.need ?? 0), 0);
   const paidTotal = rows.reduce((t, r) => t + r.paid, 0);
   const balTotal = rows.reduce((t, r) => t + (r.balance ?? 0), 0);
@@ -137,21 +140,21 @@ function DuesTable({
   return (
     <div className="card" style={{ marginBottom: 20 }}>
       <div className="df-panel-head"><span>{title}</span></div>
-      <div style={{ overflowX: 'auto', padding: '8px 8px 4px' }}>
+      <div className="df-scroll">
         <table className="df-dues wide">
           <thead>
             <tr>
-              <th rowSpan={2}>Name</th>
-              <th colSpan={2} className="grp">Need to {payable ? 'pay' : 'receive'}</th>
+              <th rowSpan={2} className="name">Name</th>
+              <th colSpan={hasDates ? 3 : 2} className="grp grp-start">Need to {payable ? 'pay' : 'receive'}</th>
               {Array.from({ length: n }, (_, i) => (
-                <th key={i} colSpan={2} className="grp">{payWord} {i + 1}</th>
+                <th key={i} colSpan={2} className="grp grp-start">{payWord} {i + 1}</th>
               ))}
               <th rowSpan={2} className="num">Balance</th>
               <th rowSpan={2}>Status</th>
               <th rowSpan={2} />
             </tr>
             <tr>
-              <th className="num sub grp-start">Amount</th><th className="sub">Date</th>
+              <th className="num sub grp-start">Amount</th><th className="sub">{takenWord}</th>{hasDates && <th className="sub">Due date</th>}
               {Array.from({ length: n }, (_, i) => (
                 <FragmentHead key={i} />
               ))}
@@ -164,12 +167,13 @@ function DuesTable({
               const statusClass = ov.overdue ? 'overdue' : ov.status;
               return (
                 <tr key={o.id} className={ov.status === 'cleared' ? 'cleared' : ''}>
-                  <td>
+                  <td className="name">
                     <div className="df-cat">{o.label}</div>
                     <div className="df-note">{o.category} · {o.cadence === 'monthly' ? 'Monthly' : 'One-time'}</div>
                   </td>
                   <td className="num grp-start">{ov.need !== null ? money(ov.need) : '—'}</td>
-                  <td>{ov.dueDate ? shortDay(ov.dueDate) : '—'}</td>
+                  <td>{ov.takenDate ? shortDay(ov.takenDate) : <span className="text-muted">—</span>}</td>
+                  {hasDates && <td>{ov.dueDate ? shortDay(ov.dueDate) : <span className="text-muted">—</span>}</td>}
                   {Array.from({ length: n }, (_, i) => {
                     const p = ov.payments[i];
                     return p ? (
@@ -197,7 +201,8 @@ function DuesTable({
               <td>Total</td>
               <td className="num grp-start">{money(needTotal)}</td>
               <td />
-              <td colSpan={n * 2} className="num">{payable ? 'Paid' : 'Received'}: {money(paidTotal)}</td>
+              {hasDates && <td />}
+              <td colSpan={n * 2} className="num grp-start">{payable ? 'Paid' : 'Received'}: {money(paidTotal)}</td>
               <td className="num df-bal-open">{money(balTotal)}</td>
               <td colSpan={2} />
             </tr>

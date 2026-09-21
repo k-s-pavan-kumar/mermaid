@@ -136,9 +136,13 @@ export interface FinanceObligation {
   /** Prefilled amount at settle-time; still editable per instance since
    *  bills like this often vary month to month. */
   default_amount: number | null;
-  /** 'YYYY-MM-DD'. For a one-time due, the date it's owed by. For a monthly
-   *  due, only the day-of-month matters — it's projected onto every month. */
+  /** 'YYYY-MM-DD', monthly dues only: just the day-of-month matters, and it's
+   *  projected onto every month. One-time dues carry no date (null). */
   due_date: string | null;
+  /** 'YYYY-MM-DD' — when the money was taken (payable) or handed over
+   *  (receivable), so the tracker shows when it started, not just how it's
+   *  being repaid. Null on dues created before this existed. */
+  taken_date: string | null;
   note: string | null;
   /** Soft on/off switch. Dues are no longer archived when cleared — a
    *  cleared due stays in the tracker (balance 0, status Cleared) so the
@@ -159,8 +163,10 @@ export interface ObligationView {
   /** Amount to pay this period. Null only for older dues created before an
    *  amount was required. */
   need: number | null;
-  /** This period's due date ('YYYY-MM-DD'), or null if none was set. */
+  /** This period's due date ('YYYY-MM-DD') — monthly dues only, else null. */
   dueDate: string | null;
+  /** When the amount was taken / given ('YYYY-MM-DD'), if recorded. */
+  takenDate: string | null;
   paid: number;
   /** need − paid, never below 0. Null when `need` is unknown. */
   balance: number | null;

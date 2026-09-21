@@ -151,6 +151,7 @@ export async function createObligation(formData: FormData): Promise<void> {
   const cadence = String(formData.get('cadence') ?? 'monthly').trim();
   const defaultAmountRaw = String(formData.get('default_amount') ?? '').trim();
   const dueDateRaw = String(formData.get('due_date') ?? '').trim();
+  const takenDateRaw = String(formData.get('taken_date') ?? '').trim();
   const note = String(formData.get('note') ?? '').trim();
 
   if (!label || !category) return;
@@ -180,7 +181,8 @@ export async function createObligation(formData: FormData): Promise<void> {
     direction: direction as FinanceObligation['direction'],
     cadence: cadence as FinanceObligation['cadence'],
     default_amount: defaultAmount && Number.isFinite(defaultAmount) && defaultAmount > 0 ? defaultAmount : null,
-    due_date: /^\d{4}-\d{2}-\d{2}$/.test(dueDateRaw) ? dueDateRaw : null,
+    due_date: cadence === 'monthly' && /^\d{4}-\d{2}-\d{2}$/.test(dueDateRaw) ? dueDateRaw : null,
+    taken_date: /^\d{4}-\d{2}-\d{2}$/.test(takenDateRaw) ? takenDateRaw : null,
     note: note || null,
     active: true,
     created_at: new Date().toISOString(),
