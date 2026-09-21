@@ -210,7 +210,7 @@ export async function runTool(name: string, args: Record<string, any>, ownerId: 
         address: null,
         timezone: args.timezone ? String(args.timezone) : 'Asia/Kolkata',
         work_types: (Array.isArray(args.work_types) ? args.work_types.map(String) : []) as WorkType[],
-        rate: null,
+        project_cost: null,
         status: 'active',
         notes: null,
         portal_token: null,

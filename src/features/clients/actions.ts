@@ -23,7 +23,7 @@ function readWorkTypes(formData: FormData): WorkType[] {
 }
 
 function fields(formData: FormData) {
-  const rateRaw = String(formData.get('rate') ?? '').trim();
+  const costRaw = String(formData.get('project_cost') ?? '').trim();
   return {
     company: String(formData.get('company') ?? '').trim() || null,
     email: String(formData.get('email') ?? '').trim() || null,
@@ -31,7 +31,7 @@ function fields(formData: FormData) {
     address: String(formData.get('address') ?? '').trim() || null,
     timezone: String(formData.get('timezone') ?? 'UTC').trim() || 'UTC',
     work_types: readWorkTypes(formData),
-    rate: rateRaw ? Number(rateRaw) || null : null,
+    project_cost: costRaw ? Number(costRaw) || null : null,
     status: (String(formData.get('status') ?? 'active') as ClientStatus),
     notes: String(formData.get('notes') ?? '').trim() || null,
   };

@@ -92,12 +92,19 @@ export default async function ClientWorkspacePage({
           <div className="text-muted" style={{ fontSize: 12.5 }}>
             <ClientTime timezone={client.timezone} />
             {client.email && <> · {client.email}</>}
-            {client.rate ? <> · {money(client.rate)}/hr agreed</> : null}
+            {client.project_cost ? <> · {money(client.project_cost)} total project cost</> : null}
           </div>
         </div>
       </div>
 
-      <div className="stat-row three">
+      <div className={client.project_cost ? 'stat-row' : 'stat-row three'}>
+        {client.project_cost ? (
+          <div className="stat-box"><div className="lbl">Project cost</div><div className="val">{money(client.project_cost)}</div>
+            <div className="text-muted" style={{ fontSize: 11.5 }}>
+              {totals.invoiced >= client.project_cost ? 'Fully invoiced' : `${money(client.project_cost - totals.invoiced)} left to invoice`}
+            </div>
+          </div>
+        ) : null}
         <div className="stat-box"><div className="lbl">Invoiced</div><div className="val">{money(totals.invoiced)}</div></div>
         <div className="stat-box"><div className="lbl">Collected</div><div className="val" style={{ color: 'var(--sage)' }}>{money(totals.paid)}</div></div>
         <div className="stat-box"><div className="lbl">Outstanding</div><div className="val" style={{ color: 'var(--crimson)' }}>{money(totals.outstanding)}</div></div>
@@ -284,12 +291,12 @@ export default async function ClientWorkspacePage({
             <DocForm
               kind={creating === 'invoice' ? 'invoice' : 'quote'}
               action={creating === 'invoice' ? createInvoiceAndOpen : createQuoteAndOpen}
-              clients={[{ id: client.id, name: client.name, company: client.company, rate: client.rate }]}
+              clients={[{ id: client.id, name: client.name, company: client.company, project_cost: client.project_cost }]}
               projects={allProjects.map((p) => ({ id: p.id, name: p.name }))}
               defaultTaxPct={settings.business.default_tax_pct}
               defaultClientId={client.id}
               defaultStream={workTypes.includes('teaching') ? 'teaching' : 'freelance'}
-              defaultRate={client.rate}
+              defaultProjectCost={client.project_cost}
             />
           )}
 
@@ -432,8 +439,8 @@ export default async function ClientWorkspacePage({
             </div>
             <div className="grid-2-eq">
               <div>
-                <label className="field-label" htmlFor="rate">Agreed rate (₹)</label>
-                <input id="rate" name="rate" type="number" min={0} defaultValue={client.rate ?? ''} style={{ width: '100%' }} />
+                <label className="field-label" htmlFor="project_cost">Total project cost (₹)</label>
+                <input id="project_cost" name="project_cost" type="number" min={0} defaultValue={client.project_cost ?? ''} style={{ width: '100%' }} />
               </div>
               <div>
                 <label className="field-label" htmlFor="status">Relationship</label>

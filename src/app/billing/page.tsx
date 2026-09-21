@@ -80,7 +80,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         <DocForm
           kind="invoice"
           action={createInvoiceAndOpen}
-          clients={clients.map((c) => ({ id: c.id, name: c.name, company: c.company, rate: c.rate }))}
+          clients={clients.map((c) => ({ id: c.id, name: c.name, company: c.company, project_cost: c.project_cost }))}
           projects={projects.map((p) => ({ id: p.id, name: p.name }))}
           defaultTaxPct={settings.business.default_tax_pct}
         />
@@ -89,7 +89,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
         <DocForm
           kind="quote"
           action={createQuoteAndOpen}
-          clients={clients.map((c) => ({ id: c.id, name: c.name, company: c.company, rate: c.rate }))}
+          clients={clients.map((c) => ({ id: c.id, name: c.name, company: c.company, project_cost: c.project_cost }))}
           projects={projects.map((p) => ({ id: p.id, name: p.name }))}
           defaultTaxPct={settings.business.default_tax_pct}
         />

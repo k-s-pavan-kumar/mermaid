@@ -5,7 +5,9 @@
 **New Supabase project:** SQL Editor → paste all of `supabase/schema.sql` → Run.
 
 **Already ran the old schema?** SQL Editor → paste `supabase/migrations/001_production_fixes.sql` → Run.
-It is safe to run more than once. It fixes: quotes/invoices being rejected when
+Then run `supabase/migrations/002_client_project_cost.sql` (renames the client
+hourly `rate` column to `project_cost`). Both are safe to run more than once.
+The first fixes: quotes/invoices being rejected when
 raised against a client with no project, three tables that had no row-level
 security, and adds `notes.content`.
 

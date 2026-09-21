@@ -6,10 +6,13 @@ import { STREAM_LABEL, type IncomeStream } from '../types';
 
 interface Row { id: number; description: string; qty: number; rate: number; unit: string }
 
-const UNITS = ['hour', 'session', 'day', 'seat', 'month', 'item'];
+const UNITS = ['project', 'hour', 'session', 'day', 'seat', 'month', 'item'];
 
 let seq = 0;
-const blank = (rate = 0): Row => ({ id: ++seq, description: '', qty: 1, rate, unit: 'hour' });
+const blank = (): Row => ({ id: ++seq, description: '', qty: 1, rate: 0, unit: 'hour' });
+
+// A fixed-price client: one line, qty 1, for the whole agreed project cost.
+const projectCostRow = (cost: number): Row => ({ id: ++seq, description: 'Project cost', qty: 1, rate: cost, unit: 'project' });
 
 /**
  * One form for both documents.
@@ -30,19 +33,19 @@ export function DocForm({
   defaultClientId,
   defaultProjectId,
   defaultStream = 'freelance',
-  defaultRate,
+  defaultProjectCost,
 }: {
   kind: 'invoice' | 'quote';
   action: (formData: FormData) => Promise<void>;
-  clients: { id: string; name: string; company: string | null; rate: number | null }[];
+  clients: { id: string; name: string; company: string | null; project_cost: number | null }[];
   projects: { id: string; name: string }[];
   defaultTaxPct: number;
   defaultClientId?: string;
   defaultProjectId?: string;
   defaultStream?: IncomeStream;
-  defaultRate?: number | null;
+  defaultProjectCost?: number | null;
 }) {
-  const [rows, setRows] = useState<Row[]>([blank(defaultRate ?? 0)]);
+  const [rows, setRows] = useState<Row[]>([defaultProjectCost ? projectCostRow(defaultProjectCost) : blank()]);
   const [clientId, setClientId] = useState(defaultClientId ?? '');
   const [taxPct, setTaxPct] = useState(defaultTaxPct);
 
@@ -56,11 +59,11 @@ export function DocForm({
 
   function pickClient(id: string) {
     setClientId(id);
-    const rate = clients.find((c) => c.id === id)?.rate;
-    // Pre-fill an empty first row with the client's agreed rate — saves the
-    // single most-retyped number in the whole flow.
-    if (rate && rows.length === 1 && rows[0]!.rate === 0 && rows[0]!.description === '') {
-      patch(rows[0]!.id, { rate });
+    const cost = clients.find((c) => c.id === id)?.project_cost;
+    // Pre-fill an empty first row with the client's total project cost as one
+    // fixed line — saves retyping the agreed amount.
+    if (cost && rows.length === 1 && rows[0]!.rate === 0 && rows[0]!.description === '') {
+      patch(rows[0]!.id, { description: 'Project cost', qty: 1, rate: cost, unit: 'project' });
     }
   }
 
@@ -142,7 +145,7 @@ export function DocForm({
             </button>
           </div>
         ))}
-        <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: '5px 11px' }} onClick={() => setRows((cur) => [...cur, blank(defaultRate ?? 0)])}>
+        <button type="button" className="btn-ghost" style={{ fontSize: 12, padding: '5px 11px' }} onClick={() => setRows((cur) => [...cur, blank()])}>
           + Add line
         </button>
       </div>

@@ -11,8 +11,10 @@ export interface Client {
    *  rarely one kind of work (a web build that later becomes a retainer
    *  plus a training day). */
   work_types: WorkType[];
-  /** Default hourly/session rate used to pre-fill invoice line items. */
-  rate: number | null;
+  /** Agreed TOTAL project cost (fixed price for the whole engagement, not
+   *  per hour). Pre-fills the first line of a new quote/invoice and drives
+   *  the "left to invoice" figure on the client page. */
+  project_cost: number | null;
   status: ClientStatus;
   notes: string | null;
   /** Random token for the read-only client portal link. Rotating it

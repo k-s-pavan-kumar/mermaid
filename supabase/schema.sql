@@ -102,7 +102,7 @@ create table clients (
   -- kind of work: a web build becomes a retainer and books a training day.
   work_types   text[] not null default '{}'
                  check (work_types <@ array['web','mobile','design','security','teaching','consulting','maintenance','content']::text[]),
-  rate         numeric,                       -- agreed rate, pre-fills invoice lines
+  project_cost numeric,                       -- agreed TOTAL project cost (fixed price), pre-fills the first invoice/quote line
   status       text not null default 'active'
                  check (status in ('lead','active','paused','past')),
   notes        text,

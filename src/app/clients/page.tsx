@@ -71,8 +71,8 @@ export default async function ClientsPage() {
         </div>
         <div className="grid-2-eq">
           <div>
-            <label className="field-label" htmlFor="rate">Agreed rate (₹)</label>
-            <input id="rate" name="rate" type="number" min={0} step="1" placeholder="e.g. 1500 per hour" style={{ width: '100%' }} />
+            <label className="field-label" htmlFor="project_cost">Total project cost (₹)</label>
+            <input id="project_cost" name="project_cost" type="number" min={0} step="1" placeholder="e.g. 50000 — fixed price for the whole project" style={{ width: '100%' }} />
           </div>
           <div>
             <label className="field-label" htmlFor="status">Relationship</label>
