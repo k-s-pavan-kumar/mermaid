@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import Link from 'next/link';
 import type { DayGroup, FinanceCategoryRule, ObligationView } from '../types';
 import type { MonthRow } from '../queries';
 import { EXPENSE_CATEGORIES, matchCategoryForLabel } from '../types';
@@ -15,6 +16,9 @@ function fmt(n: number, ccy = 'INR') {
 }
 function prettyDay(iso: string) {
   return new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+}
+function shortDay(iso: string) {
+  return new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', timeZone: 'UTC' });
 }
 function dow(iso: string) {
   return new Date(iso + 'T00:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' });
@@ -58,9 +62,6 @@ export function DailyFinanceClient({
     () => [...EXPENSE_CATEGORIES.filter((c) => c !== 'Wishlist purchase'), ...customCategories],
     [customCategories]
   );
-
-  const pendingDues = obligations.filter((o) => !o.settledEntry);
-  const settledDues = obligations.filter((o) => o.settledEntry);
 
   const maxCategory = Math.max(1, ...categoryBreakdown.map((c) => c.amount));
   const maxNet = Math.max(1, ...dailyNet.map((d) => Math.abs(d.net)));
@@ -131,58 +132,78 @@ export function DailyFinanceClient({
               <div className="card">
                 <div className="df-panel-head">
                   <span>Dues</span>
-                  <button type="button" className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setDueModalOpen(true)}>+ Add due</button>
+                  <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                    <Link href="/daily-finance/dues" className="link-btn" style={{ fontSize: 12 }}>Open full page →</Link>
+                    <button type="button" className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setDueModalOpen(true)}>+ Add due</button>
+                  </span>
                 </div>
-                <div style={{ padding: 16 }}>
+                <div style={{ padding: '14px 16px 8px' }}>
                   {obligations.length === 0 ? (
-                    <p className="text-muted text-sm" style={{ margin: 0 }}>
-                      Nothing tracked yet — add a college fee, a loan you&apos;re clearing, or money someone owes you,
-                      and it&apos;ll show up here as pending until it&apos;s settled.
+                    <p className="text-muted text-sm" style={{ margin: '0 0 8px' }}>
+                      Nothing tracked yet — add a college fee, a loan you&apos;re clearing, or money someone owes you.
+                      Enter how much and by when, then add each payment as you make it; the balance updates here.
                     </p>
                   ) : (
-                    <>
-                      {pendingDues.length === 0 ? (
-                        <p className="text-muted text-sm" style={{ margin: '0 0 10px' }}>Everything&apos;s settled for now.</p>
-                      ) : pendingDues.map((ov) => (
-                        <div key={ov.obligation.id} className="df-due-row">
-                          <div>
-                            <div className="df-cat">{ov.obligation.label}</div>
-                            <div className="df-note">
-                              {ov.obligation.direction === 'payable' ? 'You owe' : 'Owed to you'} · {ov.obligation.category}
-                              {ov.obligation.cadence === 'monthly' ? ' · Monthly' : ' · One-time'}
-                              {ov.obligation.default_amount ? ` · ${money(ov.obligation.default_amount)}` : ''}
-                            </div>
-                          </div>
-                          <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                            <button type="button" className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }} onClick={() => setSettling(ov)}>
-                              Mark {ov.obligation.direction === 'payable' ? 'paid' : 'received'}
-                            </button>
-                            <button type="button" className="df-del" title="Remove" onClick={() => void deleteObligation(ov.obligation.id)}>×</button>
-                          </span>
-                        </div>
-                      ))}
-                      {settledDues.length > 0 && (
-                        <>
-                          <div className="text-muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', margin: '14px 0 6px' }}>Settled</div>
-                          {settledDues.map((ov) => (
-                            <div key={ov.obligation.id} className="df-due-row settled">
-                              <div>
-                                <div className="df-cat">{ov.obligation.label}</div>
-                                <div className="df-note">
-                                  {ov.obligation.direction === 'payable' ? 'Paid' : 'Received'} {money(ov.settledEntry!.amount)} on {prettyDay(ov.settledEntry!.date)}
-                                </div>
-                              </div>
-                              <span style={{ display: 'flex', gap: 6 }}>
-                                <span className="df-tag" style={{ background: 'var(--sage-10, rgba(0,0,0,.05))' }}>✓ Settled</span>
-                                {ov.obligation.cadence === 'one_time' && (
-                                  <button type="button" className="df-del" title="Remove" onClick={() => void deleteObligation(ov.obligation.id)}>×</button>
-                                )}
-                              </span>
-                            </div>
-                          ))}
-                        </>
-                      )}
-                    </>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="df-dues">
+                        <thead>
+                          <tr>
+                            <th>Name</th>
+                            <th className="num">Need to pay</th>
+                            <th className="num">Paid</th>
+                            <th className="num">Balance</th>
+                            <th>Status</th>
+                            <th />
+                          </tr>
+                        </thead>
+                        {obligations.map((ov) => {
+                          const { obligation: o } = ov;
+                          const payable = o.direction === 'payable';
+                          const statusLabel = ov.overdue ? 'Overdue' : ov.status === 'cleared' ? 'Cleared' : ov.status === 'partial' ? 'Partial' : 'Pending';
+                          const statusClass = ov.overdue ? 'overdue' : ov.status;
+                          return (
+                            <tbody key={o.id} className={ov.status === 'cleared' ? 'cleared' : ''}>
+                              <tr>
+                                <td>
+                                  <div className="df-cat">{o.label}</div>
+                                  <div className="df-note">
+                                    {payable ? 'You owe' : 'Owed to you'} · {o.category} · {o.cadence === 'monthly' ? 'Monthly' : 'One-time'}
+                                  </div>
+                                </td>
+                                <td className="num">
+                                  {ov.need !== null ? money(ov.need) : '—'}
+                                  {ov.dueDate && <div className="df-note">by {shortDay(ov.dueDate)}</div>}
+                                </td>
+                                <td className="num">{money(ov.paid)}</td>
+                                <td className={`num ${ov.balance ? 'df-bal-open' : ''}`}>{ov.balance === null ? '—' : money(ov.balance)}</td>
+                                <td><span className={`df-status ${statusClass}`}>{statusLabel}</span></td>
+                                <td className="df-due-actions">
+                                  {ov.status !== 'cleared' && (
+                                    <button type="button" className="btn-ghost" style={{ fontSize: 11.5, padding: '3px 8px' }} onClick={() => setSettling(ov)}>
+                                      {payable ? '+ Pay' : '+ Receive'}
+                                    </button>
+                                  )}
+                                  <button type="button" className="df-del" title="Remove this due" onClick={() => void deleteObligation(o.id)}>×</button>
+                                </td>
+                              </tr>
+                              {ov.payments.length > 0 && (
+                                <tr className="pay-row">
+                                  <td colSpan={6}>
+                                    <span className="df-pay-label">{payable ? 'Paid' : 'Received'}:</span>
+                                    {ov.payments.map((p) => (
+                                      <span key={p.id} className="df-pay-chip">
+                                        {money(p.amount)} · {shortDay(p.date)}
+                                        <button type="button" className="df-del" title="Delete this payment" onClick={() => void deleteFinanceEntry(p.id)}>×</button>
+                                      </span>
+                                    ))}
+                                  </td>
+                                </tr>
+                              )}
+                            </tbody>
+                          );
+                        })}
+                      </table>
+                    </div>
                   )}
                 </div>
               </div>
@@ -222,7 +243,7 @@ export function DailyFinanceClient({
 
           <p className="text-muted" style={{ fontSize: 12, marginTop: 16, maxWidth: 700, lineHeight: 1.6 }}>
             <strong>Income only ever posts from something already earned.</strong> A project invoice or bug bounty
-            being marked paid posts here automatically, and so does a due once you mark it settled. Salary is the
+            being marked paid posts here automatically, and so does every payment you add against a due. Salary is the
             one thing you type in directly — there&apos;s no other event in the app that would create it.
           </p>
         </>
@@ -416,7 +437,7 @@ function AddSalaryModal({ onClose }: { onClose: () => void }) {
   );
 }
 
-function AddObligationModal({ onClose, categories }: { onClose: () => void; categories: string[] }) {
+export function AddObligationModal({ onClose, categories }: { onClose: () => void; categories: string[] }) {
   return (
     <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal">
@@ -425,13 +446,13 @@ function AddObligationModal({ onClose, categories }: { onClose: () => void; cate
           <button type="button" className="modal-close" onClick={onClose}>✕</button>
         </div>
         <p className="text-muted text-sm" style={{ margin: '0 0 16px' }}>
-          A college fee, a loan you&apos;re clearing, paying a friend back, or a friend owing you — tracked here so
-          it&apos;s visible at a glance instead of searched for in past months.
+          A college fee, a loan you&apos;re clearing, paying a friend back, or a friend owing you. Say how much and by
+          when — then add each payment as you make it, and the balance and status update on their own.
         </p>
         <form action={async (fd) => { await createObligation(fd); onClose(); }}>
           <div style={{ marginBottom: 12 }}>
-            <label className="field-label" htmlFor="o-label">Label</label>
-            <input id="o-label" name="label" type="text" required placeholder="e.g. College fee" style={{ width: '100%' }} />
+            <label className="field-label" htmlFor="o-label">Whom / what for</label>
+            <input id="o-label" name="label" type="text" required placeholder="e.g. College fee, or Ramesh" style={{ width: '100%' }} />
           </div>
           <div className="grid-2-eq">
             <div>
@@ -451,16 +472,21 @@ function AddObligationModal({ onClose, categories }: { onClose: () => void; cate
           </div>
           <div className="grid-2-eq" style={{ marginTop: 12 }}>
             <div>
-              <label className="field-label" htmlFor="o-category">Category</label>
-              <input id="o-category" name="category" list="df-category-options-due" required placeholder="e.g. Education" style={{ width: '100%' }} />
-              <datalist id="df-category-options-due">
-                {categories.map((c) => <option key={c} value={c} />)}
-              </datalist>
+              <label className="field-label" htmlFor="o-amount">Amount to pay</label>
+              <input id="o-amount" name="default_amount" type="number" min={0.01} step="0.01" required placeholder="5000" style={{ width: '100%' }} />
             </div>
             <div>
-              <label className="field-label" htmlFor="o-amount">Usual amount (optional)</label>
-              <input id="o-amount" name="default_amount" type="number" min={0} step="0.01" placeholder="1000" style={{ width: '100%' }} />
+              <label className="field-label" htmlFor="o-due">Due date</label>
+              <input id="o-due" name="due_date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} style={{ width: '100%' }} />
+              <p className="text-muted" style={{ fontSize: 11, margin: '3px 0 0' }}>For monthly dues, this day repeats every month.</p>
             </div>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label className="field-label" htmlFor="o-category">Category</label>
+            <input id="o-category" name="category" list="df-category-options-due" required placeholder="e.g. Education" style={{ width: '100%' }} />
+            <datalist id="df-category-options-due">
+              {categories.map((c) => <option key={c} value={c} />)}
+            </datalist>
           </div>
           <div style={{ marginTop: 12 }}>
             <label className="field-label" htmlFor="o-note">Note</label>
@@ -476,19 +502,27 @@ function AddObligationModal({ onClose, categories }: { onClose: () => void; cate
   );
 }
 
-function SettleObligationModal({ view, onClose, money }: { view: ObligationView; onClose: () => void; money: (n: number) => string }) {
+export function SettleObligationModal({ view, onClose, money }: { view: ObligationView; onClose: () => void; money: (n: number) => string }) {
   const { obligation } = view;
-  const verb = obligation.direction === 'payable' ? 'Paid' : 'Received';
+  const payable = obligation.direction === 'payable';
+  const suggested = view.balance !== null ? view.balance : obligation.default_amount ?? undefined;
   return (
     <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal">
         <div className="modal-head">
-          <h2>Mark &ldquo;{obligation.label}&rdquo; {obligation.direction === 'payable' ? 'paid' : 'received'}</h2>
+          <h2>{payable ? 'Add payment' : 'Add received amount'} · {obligation.label}</h2>
           <button type="button" className="modal-close" onClick={onClose}>✕</button>
         </div>
+        {view.need !== null && (
+          <div className="df-settle-sum">
+            <div><span>Need to pay</span><b>{money(view.need)}</b></div>
+            <div><span>{payable ? 'Paid so far' : 'Received so far'}</span><b>{money(view.paid)}</b></div>
+            <div><span>Balance</span><b>{money(view.balance ?? 0)}</b></div>
+          </div>
+        )}
         <p className="text-muted text-sm" style={{ margin: '0 0 16px' }}>
-          This posts a real {obligation.direction === 'payable' ? 'expense' : 'income'} entry to the ledger below,
-          under &ldquo;{obligation.category}&rdquo;{obligation.default_amount ? ` — usually ${money(obligation.default_amount)}` : ''}.
+          This posts a real {payable ? 'expense' : 'income'} entry to the ledger under &ldquo;{obligation.category}&rdquo;.
+          Pay part now and the rest later — the due stays open until the balance reaches zero.
         </p>
         <form
           action={async (fd) => { fd.set('obligation_id', obligation.id); await settleObligation(fd); onClose(); }}
@@ -499,9 +533,9 @@ function SettleObligationModal({ view, onClose, money }: { view: ObligationView;
               <input id="d-date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} style={{ width: '100%' }} />
             </div>
             <div>
-              <label className="field-label" htmlFor="d-amount">Amount {verb.toLowerCase()}</label>
+              <label className="field-label" htmlFor="d-amount">Amount {payable ? 'paid' : 'received'}</label>
               <input id="d-amount" name="amount" type="number" min={0.01} step="0.01" required
-                defaultValue={obligation.default_amount ?? undefined} style={{ width: '100%' }} />
+                defaultValue={suggested} style={{ width: '100%' }} />
             </div>
           </div>
           <div style={{ marginTop: 12 }}>
@@ -510,7 +544,7 @@ function SettleObligationModal({ view, onClose, money }: { view: ObligationView;
           </div>
           <div className="modal-foot">
             <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn">Mark {obligation.direction === 'payable' ? 'paid' : 'received'}</button>
+            <button type="submit" className="btn">{payable ? 'Add payment' : 'Add received amount'}</button>
           </div>
         </form>
       </div>

@@ -728,6 +728,25 @@ img{max-width:100%;height:auto;}
 .df-due-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--border-light);}
 .df-due-row:first-child{border-top:none;}
 .df-due-row.settled{opacity:.7;}
+.df-dues{width:100%;border-collapse:collapse;font-size:12.5px;}
+.df-dues th{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:600;text-align:left;padding:0 8px 8px;white-space:nowrap;}
+.df-dues td{padding:10px 8px;vertical-align:top;}
+.df-dues th.num,.df-dues td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;}
+.df-dues tbody{border-top:1px solid var(--border-light);}
+.df-dues tbody.cleared{opacity:.72;}
+.df-dues tr.pay-row td{padding:0 8px 10px;}
+.df-dues .df-bal-open{font-weight:600;}
+.df-due-actions{white-space:nowrap;text-align:right;}
+.df-pay-label{font-size:11px;color:var(--muted);margin-right:6px;}
+.df-pay-chip{display:inline-flex;align-items:center;gap:4px;font-size:11px;background:var(--sidebar);border:1px solid var(--border);border-radius:20px;padding:1px 4px 1px 9px;margin:0 5px 4px 0;font-variant-numeric:tabular-nums;}
+.df-status{display:inline-block;font-size:10.5px;font-weight:600;padding:2px 9px;border-radius:20px;white-space:nowrap;}
+.df-status.pending{background:rgba(217,151,6,.15);color:#9a6700;}
+.df-status.partial{background:rgba(80,90,200,.13);color:#4a4fb0;}
+.df-status.cleared{background:rgba(74,140,100,.15);color:#2f7a4f;}
+.df-status.overdue{background:rgba(220,38,80,.13);color:#c0224a;}
+.df-settle-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:0 0 14px;padding:10px 12px;background:var(--sidebar);border:1px solid var(--border);border-radius:8px;}
+.df-settle-sum div{display:flex;flex-direction:column;gap:2px;font-size:11px;color:var(--muted);}
+.df-settle-sum b{font-size:14px;color:inherit;font-weight:600;font-variant-numeric:tabular-nums;}
 .link-btn{background:none;border:none;padding:0;color:var(--pine);text-decoration:underline;cursor:pointer;font:inherit;}
 .link-btn:hover{opacity:.8;}
 .df-bar-row{margin-bottom:12px;}
@@ -918,3 +937,11 @@ img{max-width:100%;height:auto;}
    the message, for the new pages' empty states (Daily Finance, Bug Bounty
    Pipeline, Reward Vault, Learning Tracker, Release Stats). */
 .empty .btn{margin-top:12px;}
+.df-dues.wide{font-size:13px;}
+.df-dues.wide th.grp{text-align:center;border-bottom:1px solid var(--border-light);padding-bottom:4px;}
+.df-dues.wide th.sub{font-weight:500;text-transform:none;letter-spacing:0;padding-top:4px;}
+.df-dues.wide .grp-start{border-left:1px solid var(--border-light);}
+.df-dues.wide tbody tr{border-top:1px solid var(--border-light);}
+.df-dues.wide tbody tr.cleared{opacity:.72;}
+.df-dues.wide tbody td{vertical-align:middle;}
+.df-dues.wide tfoot td{padding:10px 8px;font-weight:600;border-top:2px solid var(--border);font-variant-numeric:tabular-nums;}

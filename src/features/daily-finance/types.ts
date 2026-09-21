@@ -136,21 +136,37 @@ export interface FinanceObligation {
   /** Prefilled amount at settle-time; still editable per instance since
    *  bills like this often vary month to month. */
   default_amount: number | null;
+  /** 'YYYY-MM-DD'. For a one-time due, the date it's owed by. For a monthly
+   *  due, only the day-of-month matters — it's projected onto every month. */
+  due_date: string | null;
   note: string | null;
-  /** One-time dues drop off the pending list for good once settled by
-   *  flipping this to false, rather than being deleted outright, so the
-   *  history of what it was still shows up on the linked entry. Monthly
-   *  dues stay active indefinitely — "pending" is recomputed every month
-   *  from whether this month already has a linked entry. */
+  /** Soft on/off switch. Dues are no longer archived when cleared — a
+   *  cleared due stays in the tracker (balance 0, status Cleared) so the
+   *  payment history stays visible until it's removed by hand. */
   active: boolean;
   created_at: string;
 }
 
+export type DueStatus = 'pending' | 'partial' | 'cleared';
+
+/** One row of the Dues tracker: what has to be paid this period, every
+ *  payment made against it so far, and what's left. */
 export interface ObligationView {
   obligation: FinanceObligation;
-  /** This period's settling entry, if any — this month for `monthly`,
-   *  ever for `one_time`. */
-  settledEntry: FinanceEntry | null;
+  /** Payments made against this period (this month for `monthly`, ever for
+   *  `one_time`), oldest first. Each one is a real ledger entry. */
+  payments: FinanceEntry[];
+  /** Amount to pay this period. Null only for older dues created before an
+   *  amount was required. */
+  need: number | null;
+  /** This period's due date ('YYYY-MM-DD'), or null if none was set. */
+  dueDate: string | null;
+  paid: number;
+  /** need − paid, never below 0. Null when `need` is unknown. */
+  balance: number | null;
+  status: DueStatus;
+  /** Past its due date and not yet cleared. */
+  overdue: boolean;
 }
 
 /**

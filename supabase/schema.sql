@@ -548,6 +548,7 @@ create table finance_obligations (
   direction      text not null check (direction in ('payable', 'receivable')),
   cadence        text not null check (cadence in ('monthly', 'one_time')),
   default_amount numeric,
+  due_date       date,
   note           text,
   active         boolean not null default true,
   created_at     timestamptz not null default now()

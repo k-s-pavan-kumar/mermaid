@@ -43,6 +43,7 @@ export async function Shell({
     { label: 'Settings', href: '/settings', group: 'Page' },
     { label: 'Notifications', href: '/notifications', group: 'Page' },
     { label: 'Daily Finance', href: '/daily-finance', group: 'Personal', hint: 'g f' },
+    { label: 'Daily Finance — Dues tracker', href: '/daily-finance/dues', group: 'Personal' },
     { label: 'Bug Bounty Pipeline', href: '/bounty-pipeline', group: 'Personal', hint: 'g u' },
     { label: 'Reward Vault', href: '/reward-vault', group: 'Personal', hint: 'g v' },
     { label: 'Learning Tracker', href: '/learning-tracker', group: 'Personal', hint: 'g l' },

@@ -1,5 +1,5 @@
 import { table } from '@/lib/data';
-import { shiftIso } from '@/lib/tz/today';
+import { shiftIso, todayIso } from '@/lib/tz/today';
 import type {
   FinanceEntry, DayGroup, MonthTotals,
   FinanceCategory, FinanceCategoryRule, FinanceObligation, ObligationView,
@@ -176,34 +176,75 @@ export async function getCategoryRules(ownerId: string): Promise<FinanceCategory
 // Dues (obligations)
 // ---------------------------------------------------------------------------
 
-/** Active dues plus, for each, whether this period is already settled —
- *  "this month" for a monthly due, "ever" for a one-time one. This is the
- *  "paid ones at a glance" view: pending first, settled after. */
+/** The due date for the period being viewed. A one-time due uses its own
+ *  date; a monthly due reuses its day-of-month (clamped, so a due on the
+ *  31st lands on the 30th/28th in shorter months). */
+function periodDueDate(o: FinanceObligation, monthStart: string): string | null {
+  if (!o.due_date) return null;
+  if (o.cadence === 'one_time') return o.due_date;
+  const day = Number(o.due_date.slice(8, 10));
+  const lastDay = Number(monthEndOf(monthStart).slice(8, 10));
+  return `${monthStart.slice(0, 7)}-${String(Math.min(Math.max(day, 1), lastDay)).padStart(2, '0')}`;
+}
+
+/** Turns a due plus its payments into one tracker row: need, paid,
+ *  balance, status. Pure, so it can be checked without a database. */
+export function buildObligationView(
+  obligation: FinanceObligation,
+  payments: FinanceEntry[],
+  monthStart: string,
+  today: string
+): ObligationView {
+  const sorted = [...payments].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const paid = sorted.reduce((n, e) => n + e.amount, 0);
+  const need = obligation.default_amount && obligation.default_amount > 0 ? obligation.default_amount : null;
+  const dueDate = periodDueDate(obligation, monthStart);
+
+  // Older dues have no amount, so any payment at all counts as settling them
+  // (the behaviour before partial payments existed).
+  const balance = need === null ? null : Math.max(0, need - paid);
+  const status: ObligationView['status'] =
+    need === null ? (paid > 0 ? 'cleared' : 'pending')
+    : balance === 0 ? 'cleared'
+    : paid > 0 ? 'partial'
+    : 'pending';
+  const overdue = status !== 'cleared' && !!dueDate && dueDate < today;
+
+  return { obligation, payments: sorted, need, dueDate, paid, balance, status, overdue };
+}
+
+/** Active dues, each with this period's payments, balance and status.
+ *  Anything not yet cleared comes first (overdue at the very top). */
 export async function getObligationsOverview(ownerId: string, monthStart: string): Promise<ObligationView[]> {
+  // A monthly due doesn't exist in months before it was created — browsing
+  // back to an earlier month shouldn't show it as pending or overdue there.
   const obligations = await table<FinanceObligation>('finance_obligations').where(
-    (o) => o.owner_id === ownerId && o.active
+    (o) => o.owner_id === ownerId && o.active &&
+      (o.cadence === 'one_time' || o.created_at.slice(0, 7) <= monthStart.slice(0, 7))
   );
   if (obligations.length === 0) return [];
 
   const monthEnd = monthEndOf(monthStart);
+  const today = todayIso();
   const ids = new Set(obligations.map((o) => o.id));
   const linkedEntries = await table<FinanceEntry>('finance_entries').where(
     (e) => e.owner_id === ownerId && e.source === 'obligation' && !!e.linked_obligation_id && ids.has(e.linked_obligation_id)
   );
 
-  const views: ObligationView[] = obligations.map((obligation) => {
+  const views = obligations.map((obligation) => {
     const forThis = linkedEntries.filter((e) => e.linked_obligation_id === obligation.id);
-    const settledEntry =
-      obligation.cadence === 'monthly'
-        ? forThis.find((e) => e.date >= monthStart && e.date <= monthEnd) ?? null
-        : (forThis.sort((a, b) => (a.date < b.date ? 1 : -1))[0] ?? null);
-    return { obligation, settledEntry };
+    const inPeriod = obligation.cadence === 'monthly'
+      ? forThis.filter((e) => e.date >= monthStart && e.date <= monthEnd)
+      : forThis;
+    return buildObligationView(obligation, inPeriod, monthStart, today);
   });
 
-  // Pending first, then by label, so the "still need to pay" list is what's
-  // seen first without scrolling past everything already settled.
+  const rank = (v: ObligationView) => (v.status === 'cleared' ? 2 : v.overdue ? 0 : 1);
   return views.sort((a, b) => {
-    if (!!a.settledEntry !== !!b.settledEntry) return a.settledEntry ? 1 : -1;
+    if (rank(a) !== rank(b)) return rank(a) - rank(b);
+    const ad = a.dueDate ?? '9999-12-31';
+    const bd = b.dueDate ?? '9999-12-31';
+    if (ad !== bd) return ad < bd ? -1 : 1;
     return a.obligation.label.localeCompare(b.obligation.label);
   });
 }

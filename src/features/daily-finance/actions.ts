@@ -150,6 +150,7 @@ export async function createObligation(formData: FormData): Promise<void> {
   const direction = String(formData.get('direction') ?? 'payable').trim();
   const cadence = String(formData.get('cadence') ?? 'monthly').trim();
   const defaultAmountRaw = String(formData.get('default_amount') ?? '').trim();
+  const dueDateRaw = String(formData.get('due_date') ?? '').trim();
   const note = String(formData.get('note') ?? '').trim();
 
   if (!label || !category) return;
@@ -179,6 +180,7 @@ export async function createObligation(formData: FormData): Promise<void> {
     direction: direction as FinanceObligation['direction'],
     cadence: cadence as FinanceObligation['cadence'],
     default_amount: defaultAmount && Number.isFinite(defaultAmount) && defaultAmount > 0 ? defaultAmount : null,
+    due_date: /^\d{4}-\d{2}-\d{2}$/.test(dueDateRaw) ? dueDateRaw : null,
     note: note || null,
     active: true,
     created_at: new Date().toISOString(),
@@ -196,13 +198,12 @@ export async function deleteObligation(id: string): Promise<void> {
 }
 
 /**
- * Marks one period of a due as settled: posts a real FinanceEntry (expense
- * for a payable due, income for a receivable one — a friend paying back a
- * loan is real money in, same as any other income path here) and links it
- * back to the obligation. One-time dues are archived so they drop off the
- * pending list for good; monthly ones simply reappear as pending again once
- * a new month starts, since "pending" is recomputed from whether this
- * month already has a linked entry.
+ * Records one payment against a due: posts a real FinanceEntry (expense for
+ * a payable due, income for a receivable one — a friend paying back a loan
+ * is real money in, same as any other income path here) and links it back
+ * to the obligation. A due can take several payments; its balance and
+ * status (pending / partial / cleared) are recomputed from them on read.
+ * Monthly dues start over each month, since only that month's payments count.
  */
 export async function settleObligation(formData: FormData): Promise<void> {
   const owner = await requireOwner();
@@ -228,10 +229,6 @@ export async function settleObligation(formData: FormData): Promise<void> {
     created_at: new Date().toISOString(),
     linked_obligation_id: obligation.id,
   });
-
-  if (obligation.cadence === 'one_time') {
-    await table<FinanceObligation>('finance_obligations').update(obligation.id, { active: false });
-  }
 
   revalidatePath('/daily-finance');
   revalidatePath('/dashboard');
