@@ -20,7 +20,9 @@ export type FinanceEntrySource =
   | 'manual'          // a hand-typed expense
   | 'invoice_payment'  // an invoice marked paid (this app's equivalent of the skill's "ProjectPayment")
   | 'bounty_payout'    // a BountyCase reaching status: paid
-  | 'reward_vault';     // a Need marked purchased, if that setting is on
+  | 'reward_vault'     // a Need marked purchased, if that setting is on
+  | 'salary'           // a hand-typed pay-day entry — the one other deliberate manual income path (see logSalary)
+  | 'obligation';      // a Due (see FinanceObligation) marked settled — either direction
 
 export interface FinanceEntry {
   id: string;
@@ -42,12 +44,114 @@ export interface FinanceEntry {
   linked_invoice_id?: string | null;
   linked_bounty_id?: string | null;
   linked_need_id?: string | null;
+  linked_obligation_id?: string | null;
+  /** Tax deducted at source, on income rows only — a client's TDS deduction
+   *  on an invoice, or the TDS a salary already had withheld. `amount`
+   *  above is always the net amount actually received; this is kept
+   *  alongside it purely so it's visible somewhere (for tax-filing/credit
+   *  purposes) instead of disappearing into the gap between what was
+   *  invoiced/earned and what showed up in the bank. Never set on expenses. */
+  tds_amount?: number | null;
 }
 
 export const EXPENSE_CATEGORIES = [
-  'Rent', 'Food', 'Subscriptions', 'Shopping', 'Travel', 'Tools / software', 'Wishlist purchase', 'Other',
+  'Rent', 'Food', 'Subscriptions', 'Shopping', 'Travel', 'Tools / software', 'Wishlist purchase',
+  'Education', 'Loan / debt', 'Other',
 ] as const;
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number];
+
+/** The one category a `salary` entry always uses — a fixed label rather
+ *  than a chosen one, same spirit as income categories elsewhere. */
+export const SALARY_CATEGORY = 'Salary';
+
+// ---------------------------------------------------------------------------
+// Custom categories & label-matching rules
+//
+// Two small, per-owner tables sit alongside the fixed EXPENSE_CATEGORIES
+// list above:
+//   - finance_categories: extra categories the person has typed in, kept so
+//     they show up in the picker next time instead of being retyped.
+//   - finance_category_rules: "if the item's label contains X, file it
+//     under category Y" — e.g. "bike" → "Travel". Checked whenever a label
+//     is typed, so a specific purchase (a bike oil change) rolls up to the
+//     broader category (Travel) without the person choosing it by hand
+//     every time.
+// Both are plain, user-editable data — never inferred automatically beyond
+// the explicit rules the person has added.
+// ---------------------------------------------------------------------------
+
+export interface FinanceCategory {
+  id: string;
+  owner_id: string;
+  name: string;
+  created_at: string;
+}
+
+export interface FinanceCategoryRule {
+  id: string;
+  owner_id: string;
+  /** Matched as a case-insensitive substring of the typed label. */
+  keyword: string;
+  category: string;
+  created_at: string;
+}
+
+/** First rule whose keyword appears in `label`, if any. Longest keyword
+ *  wins when more than one matches, so a more specific rule (e.g. "bike
+ *  oil") beats a broader one (e.g. "bike") when both are present. */
+export function matchCategoryForLabel(label: string, rules: FinanceCategoryRule[]): string | null {
+  const lower = label.trim().toLowerCase();
+  if (!lower) return null;
+  const hits = rules.filter((r) => r.keyword && lower.includes(r.keyword.toLowerCase()));
+  if (hits.length === 0) return null;
+  hits.sort((a, b) => b.keyword.length - a.keyword.length);
+  return hits[0]!.category;
+}
+
+// ---------------------------------------------------------------------------
+// Dues — recurring or one-off amounts owed either way: college fee, a loan
+// being cleared, paying a friend back, or a friend/client owing money back
+// to the person. Kept as their own small table of "things to watch for",
+// separate from the ledger itself, so they can be seen at a glance ("what's
+// still pending this month") instead of being searched for in past months'
+// expense lists.
+// ---------------------------------------------------------------------------
+
+/** payable: money the person owes and will pay out (a bill, a loan, a debt
+ *  to a friend). receivable: money owed TO the person (a friend paying back
+ *  a loan, a client refund). Settling either posts a real FinanceEntry —
+ *  an expense for payable, an income for receivable — exactly like every
+ *  other income path in this app, just triggered by the person confirming
+ *  the due was settled rather than typed in freely. */
+export type ObligationDirection = 'payable' | 'receivable';
+export type ObligationCadence = 'monthly' | 'one_time';
+
+export interface FinanceObligation {
+  id: string;
+  owner_id: string;
+  label: string; // "College fee", "Ramesh — loan clearance"
+  category: string;
+  direction: ObligationDirection;
+  cadence: ObligationCadence;
+  /** Prefilled amount at settle-time; still editable per instance since
+   *  bills like this often vary month to month. */
+  default_amount: number | null;
+  note: string | null;
+  /** One-time dues drop off the pending list for good once settled by
+   *  flipping this to false, rather than being deleted outright, so the
+   *  history of what it was still shows up on the linked entry. Monthly
+   *  dues stay active indefinitely — "pending" is recomputed every month
+   *  from whether this month already has a linked entry. */
+  active: boolean;
+  created_at: string;
+}
+
+export interface ObligationView {
+  obligation: FinanceObligation;
+  /** This period's settling entry, if any — this month for `monthly`,
+   *  ever for `one_time`. */
+  settledEntry: FinanceEntry | null;
+}
 
 /**
  * Income category label, derived purely from the paying project's type.

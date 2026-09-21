@@ -1,7 +1,10 @@
 import { redirect } from 'next/navigation';
 import { getSessionEmail } from '@/lib/auth/session';
 import { getSettings } from '@/features/settings/queries';
-import { getMonthLedger, getCategoryBreakdown, getDailyNet, getYearFinance } from '@/features/daily-finance/queries';
+import {
+  getMonthLedger, getCategoryBreakdown, getDailyNet, getYearFinance,
+  getCustomCategories, getCategoryRules, getObligationsOverview, getTdsSummary,
+} from '@/features/daily-finance/queries';
 import { DailyFinanceClient } from '@/features/daily-finance/components/DailyFinanceClient';
 import { Shell } from '@/components/Shell';
 import { todayIso } from '@/lib/tz/today';
@@ -15,11 +18,18 @@ export default async function DailyFinancePage() {
   const year = Number(today.slice(0, 4));
   const settings = await getSettings(email);
 
-  const [{ days, totals }, categoryBreakdown, dailyNet, { totals: yearTotals, months }] = await Promise.all([
+  const [
+    { days, totals }, categoryBreakdown, dailyNet, { totals: yearTotals, months },
+    customCategories, categoryRules, obligations, tdsYtd,
+  ] = await Promise.all([
     getMonthLedger(email, monthStart),
     getCategoryBreakdown(email, monthStart),
     getDailyNet(email, monthStart),
     getYearFinance(email, year),
+    getCustomCategories(email),
+    getCategoryRules(email),
+    getObligationsOverview(email, monthStart),
+    getTdsSummary(email, year),
   ]);
 
   const monthLabel = new Date(monthStart + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -27,7 +37,7 @@ export default async function DailyFinancePage() {
   return (
     <Shell active="daily-finance" title="Daily Finance" crumb="Personal">
       <p className="text-muted" style={{ marginTop: -8, marginBottom: 20, maxWidth: 480 }}>
-        Every expense you log by hand. Every rupee in traces back to a project or bounty —
+        Every expense you log by hand. Every rupee in traces back to a project, bounty, salary, or a due settled —
         never typed in on its own.
       </p>
       <DailyFinanceClient
@@ -40,6 +50,10 @@ export default async function DailyFinancePage() {
         yearTotals={yearTotals}
         monthRows={months}
         currency={settings.targets.currency}
+        customCategories={customCategories}
+        categoryRules={categoryRules}
+        obligations={obligations}
+        tdsYtd={tdsYtd}
       />
     </Shell>
   );

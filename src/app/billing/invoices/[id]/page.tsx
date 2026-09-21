@@ -1,7 +1,7 @@
 import { redirect, notFound } from 'next/navigation';
 import { getSessionEmail } from '@/lib/auth/session';
 import { getInvoiceById } from '@/features/billing/queries';
-import { markInvoicePaid, setDocStatus } from '@/features/billing/actions';
+import { markInvoicePaid, setInvoiceTds, setDocStatus } from '@/features/billing/actions';
 import { getClientById } from '@/features/clients/queries';
 import { getSettings } from '@/features/settings/queries';
 import { table } from '@/lib/data';
@@ -44,6 +44,21 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
       </div>
 
       <DocumentView doc={invoice} kind="invoice" business={settings.business} client={client} projectName={project?.name} />
+
+      <div className="doc-hint" style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <form
+          action={async (fd) => { 'use server'; await setInvoiceTds(invoice.id, Number(fd.get('tds') ?? 0)); }}
+          style={{ display: 'flex', alignItems: 'center', gap: 8 }}
+        >
+          <label htmlFor="tds" style={{ fontSize: 12.5 }}>TDS deducted by client</label>
+          <input id="tds" name="tds" type="number" min={0} step="0.01" defaultValue={invoice.tds_amount || ''} placeholder="0"
+            style={{ width: 110, fontSize: 12.5, padding: '4px 8px' }} />
+          <button type="submit" className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }}>Save</button>
+        </form>
+        <span className="text-muted" style={{ fontSize: 11.5 }}>
+          Netted out of what posts to Daily Finance{invoice.status === 'paid' ? ' — already applied to the posted entry' : ' once marked paid'}.
+        </span>
+      </div>
 
       <p className="doc-hint">
         Use your browser&apos;s print dialog → <b>Save as PDF</b> for a file to email. Margins and

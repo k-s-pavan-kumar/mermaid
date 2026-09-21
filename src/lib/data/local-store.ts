@@ -33,6 +33,9 @@ export type LocalDB = {
   focus_sessions: any[];
   targets_history: any[];
   finance_entries: any[];
+  finance_categories: any[];
+  finance_category_rules: any[];
+  finance_obligations: any[];
   bounty_cases: any[];
   needs: any[];
   courses: any[];

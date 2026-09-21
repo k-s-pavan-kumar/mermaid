@@ -1,6 +1,9 @@
 import { table } from '@/lib/data';
 import { shiftIso } from '@/lib/tz/today';
-import type { FinanceEntry, DayGroup, MonthTotals } from './types';
+import type {
+  FinanceEntry, DayGroup, MonthTotals,
+  FinanceCategory, FinanceCategoryRule, FinanceObligation, ObligationView,
+} from './types';
 import { newId } from '@/lib/id';
 
 async function entriesFor(ownerId: string, from: string, to: string): Promise<FinanceEntry[]> {
@@ -128,6 +131,7 @@ export async function insertIncomeEntry(input: {
   linkedProjectId?: string | null;
   linkedInvoiceId?: string | null;
   linkedBountyId?: string | null;
+  tdsAmount?: number | null;
 }): Promise<void> {
   const existing = await table<FinanceEntry>('finance_entries').where(
     (e) =>
@@ -150,7 +154,65 @@ export async function insertIncomeEntry(input: {
     linked_project_id: input.linkedProjectId ?? null,
     linked_invoice_id: input.linkedInvoiceId ?? null,
     linked_bounty_id: input.linkedBountyId ?? null,
+    tds_amount: input.tdsAmount ?? null,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Custom categories & matching rules
+// ---------------------------------------------------------------------------
+
+export async function getCustomCategories(ownerId: string): Promise<string[]> {
+  const rows = await table<FinanceCategory>('finance_categories').where((c) => c.owner_id === ownerId);
+  return rows.map((c) => c.name).sort((a, b) => a.localeCompare(b));
+}
+
+export async function getCategoryRules(ownerId: string): Promise<FinanceCategoryRule[]> {
+  const rows = await table<FinanceCategoryRule>('finance_category_rules').where((r) => r.owner_id === ownerId);
+  return [...rows].sort((a, b) => a.keyword.localeCompare(b.keyword));
+}
+
+// ---------------------------------------------------------------------------
+// Dues (obligations)
+// ---------------------------------------------------------------------------
+
+/** Active dues plus, for each, whether this period is already settled —
+ *  "this month" for a monthly due, "ever" for a one-time one. This is the
+ *  "paid ones at a glance" view: pending first, settled after. */
+export async function getObligationsOverview(ownerId: string, monthStart: string): Promise<ObligationView[]> {
+  const obligations = await table<FinanceObligation>('finance_obligations').where(
+    (o) => o.owner_id === ownerId && o.active
+  );
+  if (obligations.length === 0) return [];
+
+  const monthEnd = monthEndOf(monthStart);
+  const ids = new Set(obligations.map((o) => o.id));
+  const linkedEntries = await table<FinanceEntry>('finance_entries').where(
+    (e) => e.owner_id === ownerId && e.source === 'obligation' && !!e.linked_obligation_id && ids.has(e.linked_obligation_id)
+  );
+
+  const views: ObligationView[] = obligations.map((obligation) => {
+    const forThis = linkedEntries.filter((e) => e.linked_obligation_id === obligation.id);
+    const settledEntry =
+      obligation.cadence === 'monthly'
+        ? forThis.find((e) => e.date >= monthStart && e.date <= monthEnd) ?? null
+        : (forThis.sort((a, b) => (a.date < b.date ? 1 : -1))[0] ?? null);
+    return { obligation, settledEntry };
+  });
+
+  // Pending first, then by label, so the "still need to pay" list is what's
+  // seen first without scrolling past everything already settled.
+  return views.sort((a, b) => {
+    if (!!a.settledEntry !== !!b.settledEntry) return a.settledEntry ? 1 : -1;
+    return a.obligation.label.localeCompare(b.obligation.label);
+  });
+}
+
+/** Total TDS deducted across every income entry in a calendar year — the
+ *  figure someone needs when claiming credit for tax already withheld. */
+export async function getTdsSummary(ownerId: string, year: number): Promise<number> {
+  const entries = await entriesFor(ownerId, `${year}-01-01`, `${year}-12-31`);
+  return entries.reduce((n, e) => n + (e.tds_amount ?? 0), 0);
 }
 
 export async function insertRewardVaultExpense(input: {

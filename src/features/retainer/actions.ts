@@ -84,6 +84,7 @@ export async function markRetainerReceived(clientId: string, period: string, for
       issued_at: `${period}-01`,
       due_at: null,
       paid_at: receivedOn,
+      tds_amount: 0,
     });
   }
 

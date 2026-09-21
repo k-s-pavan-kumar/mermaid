@@ -219,6 +219,13 @@ create table invoices (
   due_at       date,
   paid_at      date,
   created_at   timestamptz not null default now(),
+  -- Tax the client deducted at source before paying (India: TDS). Kept on
+  -- the invoice itself, editable any time — before or after it's marked
+  -- paid — because it's usually only known once the payment lands and a
+  -- Form 16A/26AS shows it, not at invoicing time. markInvoicePaid() nets
+  -- it out of the amount actually posted as income; setInvoiceTds() keeps
+  -- an already-posted entry in sync if it's edited afterwards.
+  tds_amount   numeric not null default 0,
   check (project_id is not null or client_id is not null)
 );
 
@@ -489,12 +496,16 @@ create table finance_entries (
   category           text not null,
   amount             numeric not null check (amount >= 0), -- always positive; sign comes from `type`
   note               text,
-  source             text not null check (source in ('manual', 'invoice_payment', 'bounty_payout', 'reward_vault')),
+  source             text not null check (source in
+                       ('manual', 'invoice_payment', 'bounty_payout', 'reward_vault', 'salary', 'obligation')),
   created_at         timestamptz not null default now(),
   linked_project_id  uuid references projects(id) on delete set null,
   linked_invoice_id  uuid references invoices(id) on delete set null,
   linked_bounty_id   text,  -- references bounty_cases(id); text because bounty_cases.id isn't a uuid
-  linked_need_id     text   -- references needs(id); same reason
+  linked_need_id     text,  -- references needs(id); same reason
+  linked_obligation_id text, -- references finance_obligations(id); no FK since that table is created further below
+  -- Tax already deducted at source on this income row (see invoices.tds_amount).
+  tds_amount         numeric
 );
 
 create index finance_entries_owner_date_idx on finance_entries(owner_id, date desc);
@@ -503,6 +514,45 @@ create index finance_entries_owner_date_idx on finance_entries(owner_id, date de
 create unique index finance_entries_invoice_once_idx on finance_entries(linked_invoice_id) where linked_invoice_id is not null;
 create unique index finance_entries_bounty_once_idx on finance_entries(linked_bounty_id) where linked_bounty_id is not null;
 create unique index finance_entries_need_once_idx on finance_entries(linked_need_id) where linked_need_id is not null;
+
+-- ---------------------------------------------------------------------------
+-- Custom expense categories & label→category matching rules (Daily Finance)
+-- ---------------------------------------------------------------------------
+create table finance_categories (
+  id         text primary key,
+  owner_id   uuid not null references auth.users(id) default auth.uid(),
+  name       text not null,
+  created_at timestamptz not null default now(),
+  unique (owner_id, name)
+);
+
+create table finance_category_rules (
+  id         text primary key,
+  owner_id   uuid not null references auth.users(id) default auth.uid(),
+  keyword    text not null,
+  category   text not null,
+  created_at timestamptz not null default now()
+);
+create index finance_category_rules_owner_idx on finance_category_rules(owner_id);
+
+-- ---------------------------------------------------------------------------
+-- Dues (Daily Finance) — recurring or one-off amounts owed either way:
+-- college fee, clearing a loan, paying a friend back, or a friend owing the
+-- person money. See FinanceObligation in daily-finance/types.ts.
+-- ---------------------------------------------------------------------------
+create table finance_obligations (
+  id             text primary key,
+  owner_id       uuid not null references auth.users(id) default auth.uid(),
+  label          text not null,
+  category       text not null,
+  direction      text not null check (direction in ('payable', 'receivable')),
+  cadence        text not null check (cadence in ('monthly', 'one_time')),
+  default_amount numeric,
+  note           text,
+  active         boolean not null default true,
+  created_at     timestamptz not null default now()
+);
+create index finance_obligations_owner_idx on finance_obligations(owner_id, active);
 
 -- ---------------------------------------------------------------------------
 -- Bug Bounty Pipeline — a standalone kanban, deliberately not shaped like a
@@ -634,6 +684,9 @@ alter table alert_states enable row level security;
 alter table targets_history enable row level security;
 alter table project_status_log enable row level security;
 alter table finance_entries enable row level security;
+alter table finance_categories enable row level security;
+alter table finance_category_rules enable row level security;
+alter table finance_obligations enable row level security;
 alter table bounty_cases enable row level security;
 alter table needs enable row level security;
 alter table courses enable row level security;
@@ -657,6 +710,9 @@ create policy "owner full access" on alert_states for all using (owner_id = auth
 create policy "owner full access" on targets_history for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on project_status_log for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on finance_entries for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on finance_categories for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on finance_category_rules for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+create policy "owner full access" on finance_obligations for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on bounty_cases for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on needs for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 create policy "owner full access" on courses for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());

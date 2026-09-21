@@ -725,6 +725,11 @@ img{max-width:100%;height:auto;}
 .df-amt.neg{color:var(--crimson);}
 .df-del{background:none;border:none;color:var(--muted);cursor:pointer;font-size:15px;padding:0 2px;flex-shrink:0;}
 .df-del:hover{color:var(--crimson);}
+.df-due-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid var(--border-light);}
+.df-due-row:first-child{border-top:none;}
+.df-due-row.settled{opacity:.7;}
+.link-btn{background:none;border:none;padding:0;color:var(--pine);text-decoration:underline;cursor:pointer;font:inherit;}
+.link-btn:hover{opacity:.8;}
 .df-bar-row{margin-bottom:12px;}
 .df-bar-row:last-child{margin-bottom:0;}
 .df-bar-top{display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px;}

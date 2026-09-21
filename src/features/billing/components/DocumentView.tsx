@@ -107,6 +107,12 @@ export function DocumentView({
           <div><span>Tax ({doc.tax_pct}%)</span><span className="mono">{money(tax, doc.currency)}</span></div>
         )}
         <div className="doc-grand-row"><span>Total</span><span className="mono">{money(total, doc.currency)}</span></div>
+        {isInvoice && invoice.tds_amount > 0 && (
+          <>
+            <div><span>TDS deducted</span><span className="mono">−{money(invoice.tds_amount, doc.currency)}</span></div>
+            <div className="doc-grand-row"><span>Net received</span><span className="mono">{money(Math.max(0, total - invoice.tds_amount), doc.currency)}</span></div>
+          </>
+        )}
         {isInvoice && invoice.status === 'paid' && (
           <div className="doc-paid">Paid {invoice.paid_at ?? ''}</div>
         )}

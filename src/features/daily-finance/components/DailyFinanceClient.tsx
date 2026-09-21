@@ -1,10 +1,14 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import type { DayGroup } from '../types';
+import type { DayGroup, FinanceCategoryRule, ObligationView } from '../types';
 import type { MonthRow } from '../queries';
-import { EXPENSE_CATEGORIES } from '../types';
-import { logExpense, deleteFinanceEntry } from '../actions';
+import { EXPENSE_CATEGORIES, matchCategoryForLabel } from '../types';
+import {
+  logExpense, deleteFinanceEntry, logSalary,
+  createObligation, settleObligation, deleteObligation,
+  addCategoryRule, deleteCategoryRule,
+} from '../actions';
 
 function fmt(n: number, ccy = 'INR') {
   return (ccy === 'INR' ? '₹' : ccy + ' ') + Math.round(n).toLocaleString('en-IN');
@@ -20,11 +24,14 @@ const SOURCE_LABEL: Record<string, string> = {
   invoice_payment: 'Project',
   bounty_payout: 'Bounty',
   reward_vault: 'Reward Vault',
+  salary: 'Salary',
+  obligation: 'Due',
 };
 
 export function DailyFinanceClient({
   monthLabel, days, monthTotals, categoryBreakdown, dailyNet,
   yearLabel, yearTotals, monthRows, currency,
+  customCategories, categoryRules, obligations, tdsYtd,
 }: {
   monthLabel: string;
   days: DayGroup[];
@@ -35,10 +42,25 @@ export function DailyFinanceClient({
   yearTotals: { income: number; expense: number; net: number };
   monthRows: MonthRow[];
   currency: string;
+  customCategories: string[];
+  categoryRules: FinanceCategoryRule[];
+  obligations: ObligationView[];
+  tdsYtd: number;
 }) {
   const [view, setView] = useState<'month' | 'year'>('month');
   const [modalOpen, setModalOpen] = useState(false);
+  const [salaryModalOpen, setSalaryModalOpen] = useState(false);
+  const [dueModalOpen, setDueModalOpen] = useState(false);
+  const [settling, setSettling] = useState<ObligationView | null>(null);
   const money = (n: number) => fmt(n, currency);
+
+  const allCategories = useMemo(
+    () => [...EXPENSE_CATEGORIES.filter((c) => c !== 'Wishlist purchase'), ...customCategories],
+    [customCategories]
+  );
+
+  const pendingDues = obligations.filter((o) => !o.settledEntry);
+  const settledDues = obligations.filter((o) => o.settledEntry);
 
   const maxCategory = Math.max(1, ...categoryBreakdown.map((c) => c.amount));
   const maxNet = Math.max(1, ...dailyNet.map((d) => Math.abs(d.net)));
@@ -63,7 +85,10 @@ export function DailyFinanceClient({
             <div className="card df-ledger">
               <div className="df-panel-head">
                 <span>{monthLabel}</span>
-                <button type="button" className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setModalOpen(true)}>+ Add expense</button>
+                <span style={{ display: 'flex', gap: 8 }}>
+                  <button type="button" className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setSalaryModalOpen(true)}>+ Add salary</button>
+                  <button type="button" className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setModalOpen(true)}>+ Add expense</button>
+                </span>
               </div>
               {days.length === 0 ? (
                 <div className="empty">
@@ -86,11 +111,14 @@ export function DailyFinanceClient({
                         {e.source !== 'manual' && (
                           <span className="df-tag">🔗 {SOURCE_LABEL[e.source] ?? e.source} · Auto-posted</span>
                         )}
+                        {!!e.tds_amount && (
+                          <span className="df-tag" title="Deducted at source by the payer">TDS {money(e.tds_amount)} deducted</span>
+                        )}
                       </div>
                       <span className={`df-amt ${e.type === 'income' ? 'pos' : 'neg'}`}>
                         {e.type === 'income' ? '+' : '−'}{money(e.amount)}
                       </span>
-                      {(e.source === 'manual' || e.source === 'reward_vault') && (
+                      {['manual', 'reward_vault', 'salary', 'obligation'].includes(e.source) && (
                         <button type="button" className="df-del" title="Delete" onClick={() => void deleteFinanceEntry(e.id)}>×</button>
                       )}
                     </div>
@@ -101,6 +129,65 @@ export function DailyFinanceClient({
 
             <div className="df-charts">
               <div className="card">
+                <div className="df-panel-head">
+                  <span>Dues</span>
+                  <button type="button" className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setDueModalOpen(true)}>+ Add due</button>
+                </div>
+                <div style={{ padding: 16 }}>
+                  {obligations.length === 0 ? (
+                    <p className="text-muted text-sm" style={{ margin: 0 }}>
+                      Nothing tracked yet — add a college fee, a loan you&apos;re clearing, or money someone owes you,
+                      and it&apos;ll show up here as pending until it&apos;s settled.
+                    </p>
+                  ) : (
+                    <>
+                      {pendingDues.length === 0 ? (
+                        <p className="text-muted text-sm" style={{ margin: '0 0 10px' }}>Everything&apos;s settled for now.</p>
+                      ) : pendingDues.map((ov) => (
+                        <div key={ov.obligation.id} className="df-due-row">
+                          <div>
+                            <div className="df-cat">{ov.obligation.label}</div>
+                            <div className="df-note">
+                              {ov.obligation.direction === 'payable' ? 'You owe' : 'Owed to you'} · {ov.obligation.category}
+                              {ov.obligation.cadence === 'monthly' ? ' · Monthly' : ' · One-time'}
+                              {ov.obligation.default_amount ? ` · ${money(ov.obligation.default_amount)}` : ''}
+                            </div>
+                          </div>
+                          <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                            <button type="button" className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }} onClick={() => setSettling(ov)}>
+                              Mark {ov.obligation.direction === 'payable' ? 'paid' : 'received'}
+                            </button>
+                            <button type="button" className="df-del" title="Remove" onClick={() => void deleteObligation(ov.obligation.id)}>×</button>
+                          </span>
+                        </div>
+                      ))}
+                      {settledDues.length > 0 && (
+                        <>
+                          <div className="text-muted" style={{ fontSize: 11, textTransform: 'uppercase', letterSpacing: '.04em', margin: '14px 0 6px' }}>Settled</div>
+                          {settledDues.map((ov) => (
+                            <div key={ov.obligation.id} className="df-due-row settled">
+                              <div>
+                                <div className="df-cat">{ov.obligation.label}</div>
+                                <div className="df-note">
+                                  {ov.obligation.direction === 'payable' ? 'Paid' : 'Received'} {money(ov.settledEntry!.amount)} on {prettyDay(ov.settledEntry!.date)}
+                                </div>
+                              </div>
+                              <span style={{ display: 'flex', gap: 6 }}>
+                                <span className="df-tag" style={{ background: 'var(--sage-10, rgba(0,0,0,.05))' }}>✓ Settled</span>
+                                {ov.obligation.cadence === 'one_time' && (
+                                  <button type="button" className="df-del" title="Remove" onClick={() => void deleteObligation(ov.obligation.id)}>×</button>
+                                )}
+                              </span>
+                            </div>
+                          ))}
+                        </>
+                      )}
+                    </>
+                  )}
+                </div>
+              </div>
+
+              <div className="card" style={{ marginTop: 16 }}>
                 <div className="df-panel-head"><span>Spending by category</span></div>
                 <div style={{ padding: 16 }}>
                   {categoryBreakdown.length === 0 ? (
@@ -134,9 +221,9 @@ export function DailyFinanceClient({
           </div>
 
           <p className="text-muted" style={{ fontSize: 12, marginTop: 16, maxWidth: 700, lineHeight: 1.6 }}>
-            <strong>Income only ever posts from something already earned.</strong> The moment a project invoice, or a
-            bug bounty, is marked paid, it lands here automatically. There&apos;s no manual &ldquo;add income&rdquo;
-            anywhere — the form above only takes expenses.
+            <strong>Income only ever posts from something already earned.</strong> A project invoice or bug bounty
+            being marked paid posts here automatically, and so does a due once you mark it settled. Salary is the
+            one thing you type in directly — there&apos;s no other event in the app that would create it.
           </p>
         </>
       ) : (
@@ -145,6 +232,7 @@ export function DailyFinanceClient({
             <div className="stat"><div className="lbl">Income · {yearLabel} YTD</div><div className="val pos">{money(yearTotals.income)}</div></div>
             <div className="stat"><div className="lbl">Expenses · {yearLabel} YTD</div><div className="val neg">{money(yearTotals.expense)}</div></div>
             <div className="stat"><div className="lbl">Net savings YTD</div><div className={`val ${yearTotals.net >= 0 ? 'pos' : 'neg'}`}>{money(yearTotals.net)}</div></div>
+            <div className="stat"><div className="lbl">TDS deducted · {yearLabel} YTD</div><div className="val">{money(tdsYtd)}</div></div>
           </div>
 
           <div className="card">
@@ -182,12 +270,30 @@ export function DailyFinanceClient({
         </>
       )}
 
-      {modalOpen && <AddExpenseModal onClose={() => setModalOpen(false)} />}
+      {modalOpen && <AddExpenseModal onClose={() => setModalOpen(false)} categories={allCategories} rules={categoryRules} />}
+      {salaryModalOpen && <AddSalaryModal onClose={() => setSalaryModalOpen(false)} />}
+      {dueModalOpen && <AddObligationModal onClose={() => setDueModalOpen(false)} categories={allCategories} />}
+      {settling && <SettleObligationModal view={settling} onClose={() => setSettling(null)} money={money} />}
     </>
   );
 }
 
-function AddExpenseModal({ onClose }: { onClose: () => void }) {
+function AddExpenseModal({ onClose, categories, rules }: { onClose: () => void; categories: string[]; rules: FinanceCategoryRule[] }) {
+  const [category, setCategory] = useState('');
+  const [categoryTouched, setCategoryTouched] = useState(false);
+  const [note, setNote] = useState('');
+  const [rulesOpen, setRulesOpen] = useState(false);
+
+  function onNoteChange(value: string) {
+    setNote(value);
+    // Auto-suggest a category from what the item is called (e.g. "Bike oil
+    // change" → "Travel"), unless the person has already picked one by hand.
+    if (!categoryTouched) {
+      const match = matchCategoryForLabel(value, rules);
+      if (match) setCategory(match);
+    }
+  }
+
   return (
     <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal">
@@ -196,7 +302,8 @@ function AddExpenseModal({ onClose }: { onClose: () => void }) {
           <button type="button" className="modal-close" onClick={onClose}>✕</button>
         </div>
         <p className="text-muted text-sm" style={{ margin: '0 0 16px' }}>
-          Income isn&apos;t added here — it posts on its own from a project payment or bounty payout.
+          Income isn&apos;t added here — it posts on its own from a project payment, bounty payout, salary, or a due
+          being settled.
         </p>
         <form
           action={async (fd) => { await logExpense(fd); onClose(); }}
@@ -212,18 +319,198 @@ function AddExpenseModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
           <div style={{ marginTop: 12 }}>
-            <label className="field-label" htmlFor="category">Category</label>
-            <select id="category" name="category" required style={{ width: '100%' }}>
-              {EXPENSE_CATEGORIES.filter((c) => c !== 'Wishlist purchase').map((c) => <option key={c} value={c}>{c}</option>)}
-            </select>
+            <label className="field-label" htmlFor="note">What&apos;s it for?</label>
+            <input id="note" name="note" type="text" placeholder="e.g. Bike oil change" style={{ width: '100%' }}
+              value={note} onChange={(e) => onNoteChange(e.target.value)} />
           </div>
           <div style={{ marginTop: 12 }}>
-            <label className="field-label" htmlFor="note">Note</label>
-            <input id="note" name="note" type="text" placeholder="e.g. Groceries" style={{ width: '100%' }} />
+            <label className="field-label" htmlFor="category">Category</label>
+            <input id="category" name="category" list="df-category-options-expense" required style={{ width: '100%' }}
+              placeholder="Pick one or type a new label"
+              value={category}
+              onChange={(e) => { setCategory(e.target.value); setCategoryTouched(true); }} />
+            <datalist id="df-category-options-expense">
+              {categories.map((c) => <option key={c} value={c} />)}
+            </datalist>
+            <p className="text-muted" style={{ fontSize: 11.5, margin: '4px 0 0' }}>
+              Type any label — new ones are saved for next time.{' '}
+              <button type="button" className="link-btn" style={{ fontSize: 11.5 }} onClick={() => setRulesOpen((v) => !v)}>
+                {rulesOpen ? 'Hide' : 'Manage'} matching rules
+              </button>
+            </p>
           </div>
+          {rulesOpen && <CategoryRulesManager rules={rules} categories={categories} />}
           <div className="modal-foot">
             <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
             <button type="submit" className="btn">Add expense</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/** "When the item's name contains X, file it under category Y" — e.g.
+ *  "bike" → "Travel", so a bike oil change or a bike wash both roll up
+ *  under Travel without picking the category by hand every time. */
+function CategoryRulesManager({ rules, categories }: { rules: FinanceCategoryRule[]; categories: string[] }) {
+  return (
+    <div style={{ marginTop: 10, padding: 10, background: 'var(--surface-2, rgba(0,0,0,.03))', borderRadius: 8 }}>
+      {rules.length > 0 && (
+        <div style={{ marginBottom: 8, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          {rules.map((r) => (
+            <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5 }}>
+              <span>&ldquo;{r.keyword}&rdquo; → {r.category}</span>
+              <button type="button" className="df-del" title="Remove rule" onClick={() => void deleteCategoryRule(r.id)}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <form action={async (fd) => { await addCategoryRule(fd); }} style={{ display: 'flex', gap: 6 }}>
+        <input name="keyword" type="text" placeholder="e.g. bike" required style={{ flex: 1, fontSize: 12.5 }} />
+        <span style={{ fontSize: 12.5, alignSelf: 'center' }}>→</span>
+        <input name="category" type="text" list="df-category-options-expense" placeholder="e.g. Travel" required style={{ flex: 1, fontSize: 12.5 }} />
+        <button type="submit" className="btn-ghost" style={{ fontSize: 12 }}>Add</button>
+      </form>
+    </div>
+  );
+}
+
+function AddSalaryModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal">
+        <div className="modal-head">
+          <h2>Add salary</h2>
+          <button type="button" className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <p className="text-muted text-sm" style={{ margin: '0 0 16px' }}>
+          The one other manual income entry — a job pay day has no invoice or bounty to hang off of.
+        </p>
+        <form action={async (fd) => { await logSalary(fd); onClose(); }}>
+          <div className="grid-2-eq">
+            <div>
+              <label className="field-label" htmlFor="s-date">Date</label>
+              <input id="s-date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="s-amount">Amount received</label>
+              <input id="s-amount" name="amount" type="number" min={0.01} step="0.01" required placeholder="Net, after TDS" style={{ width: '100%' }} />
+            </div>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label className="field-label" htmlFor="s-tds">TDS deducted (optional)</label>
+            <input id="s-tds" name="tds" type="number" min={0} step="0.01" placeholder="0" style={{ width: '100%' }} />
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label className="field-label" htmlFor="s-note">Note</label>
+            <input id="s-note" name="note" type="text" placeholder="e.g. September salary" style={{ width: '100%' }} />
+          </div>
+          <div className="modal-foot">
+            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn">Add salary</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AddObligationModal({ onClose, categories }: { onClose: () => void; categories: string[] }) {
+  return (
+    <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal">
+        <div className="modal-head">
+          <h2>Add a due</h2>
+          <button type="button" className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <p className="text-muted text-sm" style={{ margin: '0 0 16px' }}>
+          A college fee, a loan you&apos;re clearing, paying a friend back, or a friend owing you — tracked here so
+          it&apos;s visible at a glance instead of searched for in past months.
+        </p>
+        <form action={async (fd) => { await createObligation(fd); onClose(); }}>
+          <div style={{ marginBottom: 12 }}>
+            <label className="field-label" htmlFor="o-label">Label</label>
+            <input id="o-label" name="label" type="text" required placeholder="e.g. College fee" style={{ width: '100%' }} />
+          </div>
+          <div className="grid-2-eq">
+            <div>
+              <label className="field-label" htmlFor="o-direction">Direction</label>
+              <select id="o-direction" name="direction" required defaultValue="payable" style={{ width: '100%' }}>
+                <option value="payable">I need to give (payable)</option>
+                <option value="receivable">Someone owes me (receivable)</option>
+              </select>
+            </div>
+            <div>
+              <label className="field-label" htmlFor="o-cadence">Repeats</label>
+              <select id="o-cadence" name="cadence" required defaultValue="monthly" style={{ width: '100%' }}>
+                <option value="monthly">Every month</option>
+                <option value="one_time">One-time</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid-2-eq" style={{ marginTop: 12 }}>
+            <div>
+              <label className="field-label" htmlFor="o-category">Category</label>
+              <input id="o-category" name="category" list="df-category-options-due" required placeholder="e.g. Education" style={{ width: '100%' }} />
+              <datalist id="df-category-options-due">
+                {categories.map((c) => <option key={c} value={c} />)}
+              </datalist>
+            </div>
+            <div>
+              <label className="field-label" htmlFor="o-amount">Usual amount (optional)</label>
+              <input id="o-amount" name="default_amount" type="number" min={0} step="0.01" placeholder="1000" style={{ width: '100%' }} />
+            </div>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label className="field-label" htmlFor="o-note">Note</label>
+            <input id="o-note" name="note" type="text" placeholder="Optional" style={{ width: '100%' }} />
+          </div>
+          <div className="modal-foot">
+            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn">Add due</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function SettleObligationModal({ view, onClose, money }: { view: ObligationView; onClose: () => void; money: (n: number) => string }) {
+  const { obligation } = view;
+  const verb = obligation.direction === 'payable' ? 'Paid' : 'Received';
+  return (
+    <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal">
+        <div className="modal-head">
+          <h2>Mark &ldquo;{obligation.label}&rdquo; {obligation.direction === 'payable' ? 'paid' : 'received'}</h2>
+          <button type="button" className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <p className="text-muted text-sm" style={{ margin: '0 0 16px' }}>
+          This posts a real {obligation.direction === 'payable' ? 'expense' : 'income'} entry to the ledger below,
+          under &ldquo;{obligation.category}&rdquo;{obligation.default_amount ? ` — usually ${money(obligation.default_amount)}` : ''}.
+        </p>
+        <form
+          action={async (fd) => { fd.set('obligation_id', obligation.id); await settleObligation(fd); onClose(); }}
+        >
+          <div className="grid-2-eq">
+            <div>
+              <label className="field-label" htmlFor="d-date">Date</label>
+              <input id="d-date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} style={{ width: '100%' }} />
+            </div>
+            <div>
+              <label className="field-label" htmlFor="d-amount">Amount {verb.toLowerCase()}</label>
+              <input id="d-amount" name="amount" type="number" min={0.01} step="0.01" required
+                defaultValue={obligation.default_amount ?? undefined} style={{ width: '100%' }} />
+            </div>
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <label className="field-label" htmlFor="d-note">Note</label>
+            <input id="d-note" name="note" type="text" placeholder={obligation.label} style={{ width: '100%' }} />
+          </div>
+          <div className="modal-foot">
+            <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button type="submit" className="btn">Mark {obligation.direction === 'payable' ? 'paid' : 'received'}</button>
           </div>
         </form>
       </div>

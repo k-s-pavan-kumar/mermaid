@@ -56,6 +56,10 @@ export interface Invoice extends BillingDoc {
   status: 'draft' | 'pending' | 'paid' | 'overdue';
   due_at: string | null;
   paid_at: string | null;
+  /** Tax the client deducted at source (India: TDS), editable any time.
+   *  Netted out of the amount posted to Daily Finance when paid — see
+   *  markInvoicePaid() / setInvoiceTds() in actions.ts. */
+  tds_amount: number;
 }
 
 export function lineTotal(item: LineItem): number {

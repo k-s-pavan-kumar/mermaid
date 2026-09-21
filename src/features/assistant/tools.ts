@@ -272,6 +272,7 @@ export async function runTool(name: string, args: Record<string, any>, ownerId: 
           status: 'draft',
           due_at: args.due_at ? String(args.due_at) : null,
           paid_at: null,
+          tds_amount: 0,
         });
         return { data: { ok: true, number, total: grandTotal(inv) }, effect: { label: `Draft invoice ${number}`, href: `/billing/invoices/${inv.id}` } };
       }

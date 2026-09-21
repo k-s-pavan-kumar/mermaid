@@ -8,7 +8,7 @@ import { getSettings } from '@/features/settings/queries';
 import { todayIso } from '@/lib/tz/today';
 import { grandTotal, subtotal, type IncomeStream, type Invoice, type LineItem, type Quote } from './types';
 import { postIncomeEntry } from '@/features/daily-finance/actions';
-import { categoryForProjectType } from '@/features/daily-finance/types';
+import { categoryForProjectType, type FinanceEntry } from '@/features/daily-finance/types';
 import type { Project } from '@/features/projects/types';
 import type { Client } from '@/features/clients/types';
 import { newId } from '@/lib/id';
@@ -134,6 +134,7 @@ export async function createInvoice(formData: FormData): Promise<string | null> 
     status: (String(formData.get('status') ?? 'pending') as Invoice['status']),
     due_at: String(formData.get('due_at') ?? '').trim() || null,
     paid_at: null,
+    tds_amount: 0,
   });
 
   revalidatePath('/billing');
@@ -170,6 +171,7 @@ export async function convertQuoteToInvoice(quoteId: string): Promise<string | n
     status: 'pending',
     due_at: null,
     paid_at: null,
+    tds_amount: 0,
   });
 
   await table<Quote>('quotes').update(quoteId, { status: 'accepted' });
@@ -208,18 +210,53 @@ export async function markInvoicePaid(invoiceId: string): Promise<void> {
     projectName = client?.name ?? null;
   }
 
+  const tds = inv.tds_amount ?? 0;
   await postIncomeEntry({
     ownerId: owner,
     date: inv.paid_at ?? todayIso(),
     category,
-    amount: grandTotal(inv),
+    // Net of TDS — the amount that actually landed. The deducted portion
+    // is kept alongside it (tdsAmount) rather than folded silently into
+    // the gap between what was invoiced and what showed up.
+    amount: Math.max(0, grandTotal(inv) - tds),
     note: inv.description || (projectName ? `${projectName} — invoice ${inv.number}` : `Invoice ${inv.number}`),
     source: 'invoice_payment',
     linkedProjectId: inv.project_id ?? null,
     linkedInvoiceId: inv.id,
+    tdsAmount: tds > 0 ? tds : null,
   });
   revalidatePath('/daily-finance');
   revalidatePath('/dashboard');
+}
+
+/**
+ * Records (or corrects) how much TDS a client deducted on this invoice.
+ * Editable any time — most people only learn the exact figure once the
+ * payment lands and Form 16A/26AS shows it, well after "mark paid". If the
+ * invoice is already paid, the already-posted Daily Finance entry is kept
+ * in sync so the ledger never drifts from what this says.
+ */
+export async function setInvoiceTds(invoiceId: string, tdsAmount: number): Promise<void> {
+  const owner = await requireOwner();
+  const clean = Number.isFinite(tdsAmount) && tdsAmount > 0 ? tdsAmount : 0;
+  const inv = await table<Invoice>('invoices').update(invoiceId, { tds_amount: clean });
+  if (!inv || inv.owner_id !== owner) return;
+
+  if (inv.status === 'paid') {
+    const [linked] = await table<FinanceEntry>('finance_entries').where(
+      (e) => e.owner_id === owner && e.linked_invoice_id === invoiceId
+    );
+    if (linked) {
+      await table<FinanceEntry>('finance_entries').update(linked.id, {
+        amount: Math.max(0, grandTotal(inv) - clean),
+        tds_amount: clean > 0 ? clean : null,
+      });
+    }
+  }
+
+  revalidatePath(`/billing/invoices/${invoiceId}`);
+  revalidatePath('/billing');
+  revalidatePath('/daily-finance');
 }
 
 export async function setDocStatus(kind: 'invoice' | 'quote', id: string, status: string): Promise<void> {
