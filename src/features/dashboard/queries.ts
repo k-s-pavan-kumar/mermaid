@@ -3,6 +3,7 @@ import { todayIso, shiftIso } from '@/lib/tz/today';
 import { durationMinutes } from '@/features/today/time';
 import { primaryType } from '@/lib/project-colors';
 import { grandTotal, type Invoice } from '@/features/billing/types';
+import { getInvoicePaidTotals } from '@/features/billing/queries';
 import type { Task, FocusSession } from '@/features/today/types';
 import type { Project, ProjectType, ProjectTargets } from '@/features/projects/types';
 import type { Meeting } from '@/features/meetings/types';
@@ -309,19 +310,23 @@ export interface RevenueSlice {
  * Paid invoices are dated by `paid_at` when it's set — that's when the money
  * actually landed, which is the question a financial goal is asking. Anything
  * else falls back to `issued_at`. Drafts are excluded entirely: an unsent
- * invoice is an intention, not income.
+ * invoice is an intention, not income. A partially-paid invoice contributes
+ * only what's actually landed (from `paidTotals`) to `paid`, and the rest to
+ * `outstanding` — the same bucket it would have landed in whole before
+ * partial payments existed.
  */
-export function revenueIn(invoices: Invoice[], from: string, to: string): RevenueSlice {
+export function revenueIn(invoices: Invoice[], paidTotals: Map<string, number>, from: string, to: string): RevenueSlice {
   let paid = 0;
   let outstanding = 0;
 
   for (const inv of invoices) {
     if (inv.status === 'draft') continue;
     const total = grandTotal(inv);
+    const received = inv.status === 'paid' ? total : inv.status === 'partial' ? Math.min(total, paidTotals.get(inv.id) ?? 0) : 0;
     const when = inv.status === 'paid' ? inv.paid_at ?? inv.issued_at : inv.issued_at;
     if (!when || when < from || when > to) continue;
-    if (inv.status === 'paid') paid += total;
-    else outstanding += total;
+    paid += received;
+    outstanding += Math.max(0, total - received);
   }
 
   const round = (n: number) => Math.round(n * 100) / 100;
@@ -541,10 +546,11 @@ export async function getDashboard(
 
   // One pass over the whole financial year; the week and month views are
   // slices of it rather than three separate scans of the same tables.
-  const [yearDays, invoices, projects] = await Promise.all([
+  const [yearDays, invoices, projects, paidTotals] = await Promise.all([
     getDaySpend(ownerId, fy.start, fy.end),
     table<Invoice>('invoices').all(),
     table<Project>('projects').where((p) => p.owner_id === ownerId),
+    getInvoicePaidTotals(ownerId),
   ]);
   const mine = invoices.filter((i) => !i.owner_id || i.owner_id === ownerId);
 
@@ -575,7 +581,7 @@ export async function getDashboard(
       focusHours: Math.round((days.reduce((n, d) => n + d.focusMinutes, 0) / 60) * 10) / 10,
       tasksDone: days.reduce((n, d) => n + d.tasksDone, 0),
       activeDays: days.filter((d) => d.moved).length,
-      revenue: revenueIn(mine, m, end),
+      revenue: revenueIn(mine, paidTotals, m, end),
       future: m > today,
     };
   });
@@ -602,16 +608,16 @@ export async function getDashboard(
     targets: todaysTargets,
     week: progress(
       'This week', weekStart, weekEnd, today, weekDays,
-      revenueIn(mine, weekStart, weekEnd), pickTargets(targetsHistory, weekStart)
+      revenueIn(mine, paidTotals, weekStart, weekEnd), pickTargets(targetsHistory, weekStart)
     ),
     month: progress(
       'This month', monthStart, monthEnd, today, monthDays,
-      revenueIn(mine, monthStart, monthEnd), pickTargets(targetsHistory, monthStart)
+      revenueIn(mine, paidTotals, monthStart, monthEnd), pickTargets(targetsHistory, monthStart)
     ),
     year: {
       ...progress(
         'This year', fy.start, fy.end, today, yearDays,
-        revenueIn(mine, fy.start, fy.end), pickTargets(targetsHistory, today)
+        revenueIn(mine, paidTotals, fy.start, fy.end), pickTargets(targetsHistory, today)
       ),
       label: fy.label,
     },

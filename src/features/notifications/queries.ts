@@ -167,6 +167,7 @@ async function deriveAlerts(ownerId: string): Promise<DerivedAlert[]> {
     const activeDays = lastWeekDays.filter((d) => d.moved).length;
     const paid = revenueIn(
       invoices.filter((i) => !i.owner_id || i.owner_id === ownerId),
+      new Map(),
       lastWeekStart, lastWeekEnd
     ).paid;
     const focusHours = Math.round((focusMinutes / 60) * 10) / 10;

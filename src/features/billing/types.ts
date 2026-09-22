@@ -53,8 +53,13 @@ export interface Invoice extends BillingDoc {
   quote_id: string | null;
   /** 'YYYY-MM' — set only on invoices made by the monthly-retainer flow, one per client per month. */
   period?: string | null;
-  status: 'draft' | 'pending' | 'paid' | 'overdue';
+  /** 'partial' = one or more payments recorded but not the full amount yet.
+   *  Set automatically by recordInvoicePayment()/markInvoicePaid() in
+   *  actions.ts as payments come in — never set by hand. */
+  status: 'draft' | 'pending' | 'partial' | 'paid' | 'overdue';
   due_at: string | null;
+  /** Set the moment the balance reaches 0 (recordInvoicePayment/markInvoicePaid);
+   *  cleared again if a payment covering it is later deleted. */
   paid_at: string | null;
   /** Tax the client deducted at source (India: TDS), editable any time.
    *  Netted out of the amount posted to Daily Finance when paid — see
@@ -79,4 +84,11 @@ export function taxAmount(doc: { items?: LineItem[]; amount: number; tax_pct?: n
 
 export function grandTotal(doc: { items?: LineItem[]; amount: number; tax_pct?: number }): number {
   return Math.round((subtotal(doc) + taxAmount(doc)) * 100) / 100;
+}
+
+/** What's still owed on this invoice after TDS and whatever's been paid so
+ *  far. Never negative — a slightly over-collected invoice just reads as 0
+ *  rather than a confusing negative balance. */
+export function balanceDue(doc: Invoice, paidSoFar: number): number {
+  return Math.max(0, Math.round((grandTotal(doc) - (doc.tds_amount ?? 0) - paidSoFar) * 100) / 100);
 }

@@ -16,6 +16,7 @@ import {
 } from '@/features/projects/actions';
 import { addQuote, addInvoice, markInvoicePaidForProject } from '@/features/billing/actions';
 import { grandTotal } from '@/features/billing/types';
+import { getInvoicePaidTotals } from '@/features/billing/queries';
 import { getSettings } from '@/features/settings/queries';
 import { scaffoldProject } from '@/features/scaffold/actions';
 import { ScaffoldCard } from '@/features/scaffold/ScaffoldCard';
@@ -87,8 +88,11 @@ export default async function ProjectDetailPage({
   const boundConnect = connectIntegration.bind(null, id);
 
   // Totals include tax, so the project page and the document agree.
+  const paidTotals = await getInvoicePaidTotals(email);
   const invoiced = project.invoices.filter((i) => i.status !== 'draft').reduce((s, i) => s + grandTotal(i), 0);
-  const paid = project.invoices.filter((i) => i.status === 'paid').reduce((s, i) => s + grandTotal(i), 0);
+  const paid = project.invoices
+    .filter((i) => i.status === 'paid' || i.status === 'partial')
+    .reduce((s, i) => s + Math.min(grandTotal(i), paidTotals.get(i.id) ?? 0), 0);
 
   const sessions = await table<FocusSession>('focus_sessions').where((s) => s.project_id === id);
   const bountyPaid = project.submissions.reduce((s, x) => s + (x.payout ?? 0), 0);
@@ -356,13 +360,18 @@ export default async function ProjectDetailPage({
                     <tr key={inv.id}>
                       <td className="mono"><a href={`/billing/invoices/${inv.id}`}>{inv.number}</a></td><td>{inv.description}</td>
                       <td className="mono">{inv.due_at ?? '—'}</td><td className="mono">{inr(grandTotal(inv))}</td>
-                      <td><span className={`tag ${inv.status === 'paid' ? 'ontrack' : inv.status === 'overdue' ? 'risk' : inv.status === 'pending' ? 'review' : 'idea'}`}>{inv.status}</span></td>
+                      <td><span className={`tag ${inv.status === 'paid' ? 'ontrack' : inv.status === 'overdue' ? 'risk' : inv.status === 'partial' || inv.status === 'pending' ? 'review' : 'idea'}`}>{inv.status}</span></td>
                       <td>
-                        {inv.status !== 'paid' && (
-                          <form action={async () => { 'use server'; await markInvoicePaidForProject(id, inv.id); }}>
-                            <SubmitButton className="btn-ghost" pendingLabel="Saving…" style={{ fontSize: 12, padding: '4px 10px' }}>Mark paid</SubmitButton>
-                          </form>
-                        )}
+                        <span style={{ display: 'flex', gap: 8 }}>
+                          {inv.status !== 'paid' && (
+                            <>
+                              <form action={async () => { 'use server'; await markInvoicePaidForProject(id, inv.id); }}>
+                                <SubmitButton className="btn-ghost" pendingLabel="Saving…" style={{ fontSize: 12, padding: '4px 10px' }}>Mark paid</SubmitButton>
+                              </form>
+                              <a href={`/billing/invoices/${inv.id}#payments`} className="btn-link" style={{ fontSize: 12 }}>Add payment</a>
+                            </>
+                          )}
+                        </span>
                       </td>
                     </tr>
                   ))}

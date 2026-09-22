@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { getSessionEmail } from '@/lib/auth/session';
-import { getInvoices, getQuotes, getIncomeByStream } from '@/features/billing/queries';
+import { getInvoices, getQuotes, getIncomeByStream, getInvoicePaidTotals } from '@/features/billing/queries';
 import { createInvoiceAndOpen, createQuoteAndOpen, markInvoicePaid, convertQuoteAndOpen, deleteDoc } from '@/features/billing/actions';
 import { grandTotal, STREAM_LABEL } from '@/features/billing/types';
 import { getClients } from '@/features/clients/queries';
@@ -13,7 +13,7 @@ import { DocForm } from '@/features/billing/components/DocForm';
 const money = (n: number, ccy = 'INR') =>
   (ccy === 'INR' ? '₹' : ccy + ' ') + n.toLocaleString('en-IN', { maximumFractionDigits: 2 });
 
-const INVOICE_TAG: Record<string, string> = { paid: 'ontrack', overdue: 'risk', pending: 'review', draft: 'idea' };
+const INVOICE_TAG: Record<string, string> = { paid: 'ontrack', overdue: 'risk', partial: 'review', pending: 'review', draft: 'idea' };
 const QUOTE_TAG: Record<string, string> = { accepted: 'ontrack', declined: 'risk', sent: 'review', draft: 'idea' };
 
 export default async function BillingPage({ searchParams }: { searchParams: Promise<{ new?: string }> }) {
@@ -21,13 +21,14 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   if (!email) redirect('/login');
 
   const { new: creating } = await searchParams;
-  const [invoices, quotes, byStream, clients, projects, settings] = await Promise.all([
+  const [invoices, quotes, byStream, clients, projects, settings, paidTotals] = await Promise.all([
     getInvoices(email),
     getQuotes(email),
     getIncomeByStream(email),
     getClients(email),
     getProjects(),
     getSettings(email),
+    getInvoicePaidTotals(email),
   ]);
 
   const clientName = (id: string | null) => clients.find((c) => c.id === id)?.name;
@@ -39,7 +40,7 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
     (acc, i) => {
       const t = grandTotal(i);
       if (i.status !== 'draft') acc.invoiced += t;
-      if (i.status === 'paid') acc.paid += t;
+      if (i.status === 'paid' || i.status === 'partial') acc.paid += Math.min(t, paidTotals.get(i.id) ?? 0);
       return acc;
     },
     { invoiced: 0, paid: 0 }
@@ -109,14 +110,26 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
                   <td>{payer(inv)}</td>
                   <td className="text-muted">{STREAM_LABEL[inv.stream] ?? '—'}</td>
                   <td className="mono">{inv.issued_at ?? '—'}</td>
-                  <td className="mono">{money(grandTotal(inv), inv.currency)}</td>
+                  <td className="mono">
+                    {money(grandTotal(inv), inv.currency)}
+                    {inv.status === 'partial' && (
+                      <div className="text-muted" style={{ fontSize: 10.5 }}>
+                        {money(paidTotals.get(inv.id) ?? 0, inv.currency)} received
+                      </div>
+                    )}
+                  </td>
                   <td><span className={`tag ${INVOICE_TAG[inv.status] ?? 'idea'}`}>{inv.status}</span></td>
                   <td>
                     <span style={{ display: 'flex', gap: 8 }}>
                       {inv.status !== 'paid' && (
-                        <ActionButton action={async () => { 'use server'; await markInvoicePaid(inv.id); }} className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }} pendingLabel="Saving…">
-                          Mark paid
-                        </ActionButton>
+                        <>
+                          <ActionButton action={async () => { 'use server'; await markInvoicePaid(inv.id); }} className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }} pendingLabel="Saving…">
+                            Mark paid
+                          </ActionButton>
+                          <a href={`/billing/invoices/${inv.id}#payments`} className="btn-link" style={{ fontSize: 11.5 }}>
+                            Add payment
+                          </a>
+                        </>
                       )}
                       <ActionButton
                         action={async () => { 'use server'; await deleteDoc('invoice', inv.id); }}

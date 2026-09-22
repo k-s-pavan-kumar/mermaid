@@ -4,7 +4,7 @@ import type { Project } from '@/features/projects/types';
 import type { Task } from '@/features/today/types';
 import type { Note } from '@/features/notes/types';
 import type { Meeting } from '@/features/meetings/types';
-import { getBillingForClient } from '@/features/billing/queries';
+import { getBillingForClient, getInvoicePaidTotals } from '@/features/billing/queries';
 import { grandTotal } from '@/features/billing/types';
 import type { FocusSession } from '@/features/today/types';
 import { projectTime } from '@/features/projects/time';
@@ -38,20 +38,21 @@ export async function getClientWorkspace(clientId: string) {
   const projects = await table<Project>('projects').where((p) => p.client_id === clientId);
   const projectIds = projects.map((p) => p.id);
 
-  const [tasks, notes, meetings, billing, sessions] = await Promise.all([
+  const [tasks, notes, meetings, billing, sessions, paidTotals] = await Promise.all([
     table<Task>('tasks').where((t) => !!t.project_id && projectIds.includes(t.project_id)),
     table<Note>('notes').where((n) => n.client_id === clientId || (!!n.project_id && projectIds.includes(n.project_id))),
     table<Meeting>('meetings').where((m) => m.client_id === clientId),
     getBillingForClient(clientId, projectIds),
     table<FocusSession>('focus_sessions').where((s) => !!s.project_id && projectIds.includes(s.project_id)),
+    getInvoicePaidTotals(client.owner_id),
   ]);
 
   const invoiced = billing.invoices
     .filter((i) => i.status !== 'draft')
     .reduce((s, i) => s + grandTotal(i), 0);
   const paid = billing.invoices
-    .filter((i) => i.status === 'paid')
-    .reduce((s, i) => s + grandTotal(i), 0);
+    .filter((i) => i.status === 'paid' || i.status === 'partial')
+    .reduce((s, i) => s + Math.min(grandTotal(i), paidTotals.get(i.id) ?? 0), 0);
 
   return {
     client,

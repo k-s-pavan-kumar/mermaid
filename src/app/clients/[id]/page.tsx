@@ -399,13 +399,18 @@ export default async function ClientWorkspacePage({
                       <td className="text-muted">{STREAM_LABEL[inv.stream] ?? '—'}</td>
                       <td className="mono">{inv.issued_at ?? '—'}</td>
                       <td className="mono">{money(grandTotal(inv))}</td>
-                      <td><span className={`tag ${inv.status === 'paid' ? 'ontrack' : inv.status === 'overdue' ? 'risk' : inv.status === 'pending' ? 'review' : 'idea'}`}>{inv.status}</span></td>
+                      <td><span className={`tag ${inv.status === 'paid' ? 'ontrack' : inv.status === 'overdue' ? 'risk' : inv.status === 'partial' || inv.status === 'pending' ? 'review' : 'idea'}`}>{inv.status}</span></td>
                       <td>
-                        {inv.status !== 'paid' && (
-                          <ActionButton action={async () => { 'use server'; await markInvoicePaid(inv.id); }} className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }} pendingLabel="Saving…">
-                            Mark paid
-                          </ActionButton>
-                        )}
+                        <span style={{ display: 'flex', gap: 8 }}>
+                          {inv.status !== 'paid' && (
+                            <>
+                              <ActionButton action={async () => { 'use server'; await markInvoicePaid(inv.id); }} className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }} pendingLabel="Saving…">
+                                Mark paid
+                              </ActionButton>
+                              <a href={`/billing/invoices/${inv.id}#payments`} className="btn-link" style={{ fontSize: 11.5 }}>Add payment</a>
+                            </>
+                          )}
+                        </span>
                       </td>
                     </tr>
                   ))}

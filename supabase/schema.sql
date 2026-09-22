@@ -94,6 +94,16 @@
 --   alter table projects drop constraint projects_types_check;
 --   alter table projects add constraint projects_types_check check (types <@ array[
 --     'client','internal','opensource','mobile','game','web','content','assess','bounty','freelance','institute','teaching','marketing']::text[]);
+--
+--   -- Partial invoice payments: an invoice can now take several payments
+--   -- (each its own finance_entries row) before it's fully paid, so the
+--   -- old "exactly one payment per invoice" unique index has to go.
+--   alter table invoices drop constraint if exists invoices_status_check;
+--   alter table invoices add constraint invoices_status_check
+--     check (status in ('draft','pending','partial','paid','overdue'));
+--   drop index if exists finance_entries_invoice_once_idx;
+--   create index if not exists finance_entries_invoice_idx
+--     on finance_entries(linked_invoice_id) where linked_invoice_id is not null;
 
 create extension if not exists "uuid-ossp";
 
@@ -225,7 +235,7 @@ create table invoices (
   currency     text not null default 'INR',
   notes        text,
   status       text not null default 'draft' check (status in
-                 ('draft','pending','paid','overdue')),
+                 ('draft','pending','partial','paid','overdue')),
   issued_at    date,
   due_at       date,
   paid_at      date,
@@ -521,8 +531,11 @@ create table finance_entries (
 
 create index finance_entries_owner_date_idx on finance_entries(owner_id, date desc);
 -- Guards the idempotency check in postIncomeEntry()/postRewardVaultExpense():
--- at most one auto-posted entry per source event.
-create unique index finance_entries_invoice_once_idx on finance_entries(linked_invoice_id) where linked_invoice_id is not null;
+-- at most one auto-posted entry per source event. NOT applied to invoices —
+-- an invoice can be paid in several installments (recordInvoicePayment() in
+-- src/features/billing/actions.ts), each its own finance_entries row, so
+-- linked_invoice_id is deliberately not unique.
+create index finance_entries_invoice_idx on finance_entries(linked_invoice_id) where linked_invoice_id is not null;
 create unique index finance_entries_bounty_once_idx on finance_entries(linked_bounty_id) where linked_bounty_id is not null;
 create unique index finance_entries_need_once_idx on finance_entries(linked_need_id) where linked_need_id is not null;
 

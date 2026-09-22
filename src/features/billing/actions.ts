@@ -6,8 +6,7 @@ import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
 import { getSettings } from '@/features/settings/queries';
 import { todayIso } from '@/lib/tz/today';
-import { grandTotal, subtotal, type IncomeStream, type Invoice, type LineItem, type Quote } from './types';
-import { postIncomeEntry } from '@/features/daily-finance/actions';
+import { balanceDue, grandTotal, subtotal, type IncomeStream, type Invoice, type LineItem, type Quote } from './types';
 import { categoryForProjectType, type FinanceEntry } from '@/features/daily-finance/types';
 import type { Project } from '@/features/projects/types';
 import type { Client } from '@/features/clients/types';
@@ -180,22 +179,29 @@ export async function convertQuoteToInvoice(quoteId: string): Promise<string | n
   return invoice.id;
 }
 
-export async function markInvoicePaid(invoiceId: string): Promise<void> {
-  const owner = await requireOwner();
-  const inv = await table<Invoice>('invoices').update(invoiceId, {
-    status: 'paid',
-    paid_at: todayIso(),
-  });
-  revalidatePath('/billing');
-  if (inv?.project_id) revalidatePath(`/projects/${inv.project_id}`);
-  if (inv?.client_id) revalidatePath(`/clients/${inv.client_id}`);
-  if (!inv) return;
+/** Sum of every payment already recorded against this invoice. */
+async function paidSoFar(ownerId: string, invoiceId: string): Promise<number> {
+  const entries = await table<FinanceEntry>('finance_entries').where(
+    (e) => e.owner_id === ownerId && e.source === 'invoice_payment' && e.linked_invoice_id === invoiceId
+  );
+  return Math.round(entries.reduce((n, e) => n + e.amount, 0) * 100) / 100;
+}
 
-  // Meridian doesn't have a separate "ProjectPayment" entity — a paid
-  // invoice already carries everything one would (amount, date, project,
-  // and a project can be paid in several installments, each its own
-  // invoice) — so marking an invoice paid IS the income event. This is the
-  // one and only place a real income FinanceEntry gets created.
+/**
+ * Records one real payment against an invoice — posts a FinanceEntry (this
+ * is the one and only place a real income entry gets created for invoiced
+ * work) and, from the running total of every payment recorded so far,
+ * updates the invoice to 'partial' or 'paid'. An invoice can take any
+ * number of these, exactly like a due in Daily Finance can take several
+ * payments before it's cleared.
+ */
+async function applyInvoicePayment(
+  owner: string,
+  inv: Invoice,
+  amount: number,
+  date: string,
+  note: string | null
+): Promise<void> {
   let category = STREAM_CATEGORY[inv.stream] ?? 'Other income';
   let projectName: string | null = null;
   if (inv.project_id) {
@@ -210,21 +216,99 @@ export async function markInvoicePaid(invoiceId: string): Promise<void> {
     projectName = client?.name ?? null;
   }
 
-  const tds = inv.tds_amount ?? 0;
-  await postIncomeEntry({
-    ownerId: owner,
-    date: inv.paid_at ?? todayIso(),
+  await table<FinanceEntry>('finance_entries').insert({
+    id: newId(),
+    owner_id: owner,
+    date,
+    type: 'income',
     category,
-    // Net of TDS — the amount that actually landed. The deducted portion
-    // is kept alongside it (tdsAmount) rather than folded silently into
-    // the gap between what was invoiced and what showed up.
-    amount: Math.max(0, grandTotal(inv) - tds),
-    note: inv.description || (projectName ? `${projectName} — invoice ${inv.number}` : `Invoice ${inv.number}`),
+    amount: Math.max(0, amount),
+    note: note || inv.description || (projectName ? `${projectName} — invoice ${inv.number}` : `Invoice ${inv.number}`),
     source: 'invoice_payment',
-    linkedProjectId: inv.project_id ?? null,
-    linkedInvoiceId: inv.id,
-    tdsAmount: tds > 0 ? tds : null,
+    created_at: new Date().toISOString(),
+    linked_project_id: inv.project_id ?? null,
+    linked_invoice_id: inv.id,
+    tds_amount: null,
   });
+
+  const paid = await paidSoFar(owner, inv.id);
+  const remaining = balanceDue(inv, paid);
+  const status: Invoice['status'] = remaining <= 0 ? 'paid' : 'partial';
+  await table<Invoice>('invoices').update(inv.id, {
+    status,
+    paid_at: status === 'paid' ? date : null,
+  });
+
+  revalidatePath('/billing');
+  revalidatePath(`/billing/invoices/${inv.id}`);
+  if (inv.project_id) revalidatePath(`/projects/${inv.project_id}`);
+  if (inv.client_id) revalidatePath(`/clients/${inv.client_id}`);
+  revalidatePath('/daily-finance');
+  revalidatePath('/dashboard');
+}
+
+/** One click: pays off whatever is still owed, today, in a single payment.
+ *  Unchanged behaviour for an invoice with no partial payments on it yet —
+ *  still the fastest way to record a fully-settled invoice. */
+export async function markInvoicePaid(invoiceId: string): Promise<void> {
+  const owner = await requireOwner();
+  const inv = await table<Invoice>('invoices').find(invoiceId);
+  if (!inv || inv.owner_id !== owner) return;
+
+  const paid = await paidSoFar(owner, inv.id);
+  const remaining = balanceDue(inv, paid);
+  if (remaining <= 0) {
+    // Already fully covered by payments on file — just make sure the
+    // status agrees; no new money actually came in.
+    await table<Invoice>('invoices').update(inv.id, { status: 'paid', paid_at: inv.paid_at ?? todayIso() });
+    revalidatePath('/billing');
+    revalidatePath(`/billing/invoices/${inv.id}`);
+    return;
+  }
+  await applyInvoicePayment(owner, inv, remaining, todayIso(), null);
+}
+
+/** Records a partial (or full) payment with its own date, from the "Add
+ *  payment" form on the invoice page — for the common case of a client
+ *  paying an invoice in installments. */
+export async function recordInvoicePayment(formData: FormData): Promise<void> {
+  const owner = await requireOwner();
+  const invoiceId = String(formData.get('invoice_id') ?? '').trim();
+  const date = String(formData.get('date') ?? '').trim() || todayIso();
+  const amount = Number(formData.get('amount') ?? 0);
+  const note = String(formData.get('note') ?? '').trim();
+  if (!invoiceId || !Number.isFinite(amount) || amount <= 0) return;
+
+  const inv = await table<Invoice>('invoices').find(invoiceId);
+  if (!inv || inv.owner_id !== owner) return;
+
+  await applyInvoicePayment(owner, inv, amount, date, note || null);
+}
+
+/** Undoes a mistaken payment — removes the FinanceEntry and re-derives the
+ *  invoice's status/paid_at from whatever payments are left. */
+export async function deleteInvoicePayment(paymentId: string): Promise<void> {
+  const owner = await requireOwner();
+  const entry = await table<FinanceEntry>('finance_entries').find(paymentId);
+  if (!entry || entry.owner_id !== owner || entry.source !== 'invoice_payment' || !entry.linked_invoice_id) return;
+
+  const invoiceId = entry.linked_invoice_id;
+  await table<FinanceEntry>('finance_entries').remove(paymentId);
+
+  const inv = await table<Invoice>('invoices').find(invoiceId);
+  if (inv) {
+    const paid = await paidSoFar(owner, invoiceId);
+    const remaining = balanceDue(inv, paid);
+    const status: Invoice['status'] = paid <= 0 ? 'pending' : remaining <= 0 ? 'paid' : 'partial';
+    await table<Invoice>('invoices').update(invoiceId, {
+      status,
+      paid_at: status === 'paid' ? (inv.paid_at ?? todayIso()) : null,
+    });
+    revalidatePath(`/billing/invoices/${invoiceId}`);
+    if (inv.project_id) revalidatePath(`/projects/${inv.project_id}`);
+    if (inv.client_id) revalidatePath(`/clients/${inv.client_id}`);
+  }
+  revalidatePath('/billing');
   revalidatePath('/daily-finance');
   revalidatePath('/dashboard');
 }
@@ -242,16 +326,29 @@ export async function setInvoiceTds(invoiceId: string, tdsAmount: number): Promi
   const inv = await table<Invoice>('invoices').update(invoiceId, { tds_amount: clean });
   if (!inv || inv.owner_id !== owner) return;
 
-  if (inv.status === 'paid') {
-    const [linked] = await table<FinanceEntry>('finance_entries').where(
-      (e) => e.owner_id === owner && e.linked_invoice_id === invoiceId
-    );
-    if (linked) {
-      await table<FinanceEntry>('finance_entries').update(linked.id, {
-        amount: Math.max(0, grandTotal(inv) - clean),
-        tds_amount: clean > 0 ? clean : null,
-      });
-    }
+  const entries = await table<FinanceEntry>('finance_entries').where(
+    (e) => e.owner_id === owner && e.source === 'invoice_payment' && e.linked_invoice_id === invoiceId
+  );
+
+  if (inv.status === 'paid' && entries.length === 1) {
+    // The common case, unchanged from before partial payments existed: one
+    // payment covers the whole invoice, so keep its recorded amount net of
+    // TDS in sync as the TDS figure is corrected.
+    await table<FinanceEntry>('finance_entries').update(entries[0].id, {
+      amount: Math.max(0, grandTotal(inv) - clean),
+      tds_amount: clean > 0 ? clean : null,
+    });
+  } else if (entries.length > 0) {
+    // Several payments on file — each already records the real cash that
+    // came in, so leave them alone and just re-derive the status/paid_at
+    // now that less (or more) is owed overall.
+    const paid = Math.round(entries.reduce((n, e) => n + e.amount, 0) * 100) / 100;
+    const remaining = balanceDue({ ...inv, tds_amount: clean }, paid);
+    const status: Invoice['status'] = remaining <= 0 ? 'paid' : 'partial';
+    await table<Invoice>('invoices').update(invoiceId, {
+      status,
+      paid_at: status === 'paid' ? (inv.paid_at ?? todayIso()) : null,
+    });
   }
 
   revalidatePath(`/billing/invoices/${invoiceId}`);

@@ -249,6 +249,7 @@ async function main() {
       inv({ amount: 7777, status: 'draft', issued_at: '2026-05-10' }),
       inv({ amount: 200, status: 'paid', tax_pct: 10, paid_at: '2026-05-21' }),
     ],
+    new Map(),
     '2026-05-01',
     '2026-05-31'
   );
