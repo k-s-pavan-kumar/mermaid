@@ -187,6 +187,8 @@ export function categoryForProjectType(type: ProjectType): string {
     case 'client': return 'Client payment';
     case 'freelance': return 'Freelance royalty';
     case 'institute': return 'Institute payment';
+    case 'teaching': return 'Teaching payment';
+    case 'marketing': return 'Marketing retainer';
     case 'internal': return 'Internal payment';
     case 'opensource': return 'Open source royalty';
     default: return 'Project payment';

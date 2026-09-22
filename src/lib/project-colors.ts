@@ -14,6 +14,8 @@ export const TYPE_COLOR: Record<ProjectType, string> = {
   bounty: 'var(--crimson)',
   freelance: 'var(--gold)',
   institute: 'var(--cyan)',
+  teaching: 'var(--sage)',
+  marketing: 'var(--plumrose)',
 };
 
 export const TYPE_LABEL: Record<ProjectType, string> = {
@@ -28,6 +30,8 @@ export const TYPE_LABEL: Record<ProjectType, string> = {
   bounty: 'Bug Bounty',
   freelance: 'Freelance',
   institute: 'Institute',
+  teaching: 'Teaching',
+  marketing: 'Digital Marketing',
 };
 
 /** One short line per type, shown under the picker so the labels aren't
@@ -44,6 +48,8 @@ export const TYPE_HINT: Record<ProjectType, string> = {
   bounty: 'Bug bounty program — unlocks the submissions tab.',
   freelance: 'Freelance work outside a named client relationship — royalties, one-off gigs.',
   institute: 'Guest lectures, workshops, institute honorariums.',
+  teaching: 'Regular teaching — school, institute classes, tuition.',
+  marketing: 'Digital marketing — SEO, ads, social, campaigns.',
 };
 
 /** Stable display order for pickers and filter chips. */
@@ -59,6 +65,8 @@ export const TYPE_ORDER: ProjectType[] = [
   'bounty',
   'freelance',
   'institute',
+  'teaching',
+  'marketing',
 ];
 
 type TypeCarrier = { type: ProjectType; types?: ProjectType[] | null };

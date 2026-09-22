@@ -83,6 +83,17 @@
 --     'client','internal','opensource','mobile','game','web','content','assess','bounty','freelance','institute']::text[]);
 --
 --   alter table settings add column reward_vault jsonb not null default '{}'::jsonb;
+--
+--   -- 'teaching' (school/institute classes, tuition) and 'marketing'
+--   -- (digital marketing retainers) as project types, so this kind of work
+--   -- can be picked in the Projects picker and then shows up as a project
+--   -- to log time against on Today:
+--   alter table projects drop constraint projects_type_check;
+--   alter table projects add constraint projects_type_check check (type in
+--     ('client','internal','opensource','mobile','game','web','content','assess','bounty','freelance','institute','teaching','marketing'));
+--   alter table projects drop constraint projects_types_check;
+--   alter table projects add constraint projects_types_check check (types <@ array[
+--     'client','internal','opensource','mobile','game','web','content','assess','bounty','freelance','institute','teaching','marketing']::text[]);
 
 create extension if not exists "uuid-ossp";
 
@@ -128,12 +139,12 @@ create table projects (
   -- Primary type: always types[1]. Kept as its own column so the index and
   -- every single-type read keep working.
   type         text not null check (type in
-                 ('client','internal','opensource','mobile','game','web','content','assess','bounty','freelance','institute')),
+                 ('client','internal','opensource','mobile','game','web','content','assess','bounty','freelance','institute','teaching','marketing')),
   -- Full type set — a project is often several things at once (an
   -- open-source repo that's also a web app; client work that's also an
   -- assessment). Order matters: types[1] is the primary.
   types        text[] not null default '{}'
-                 check (types <@ array['client','internal','opensource','mobile','game','web','content','assess','bounty','freelance','institute']::text[]),
+                 check (types <@ array['client','internal','opensource','mobile','game','web','content','assess','bounty','freelance','institute','teaching','marketing']::text[]),
   client_id    uuid references clients(id) on delete set null,
   -- 'dropped' is an explicit terminal state distinct from 'done', so the
   -- Reward Vault can tell "finished, unlocks rewards" apart from
