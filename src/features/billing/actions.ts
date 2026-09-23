@@ -330,11 +330,12 @@ export async function setInvoiceTds(invoiceId: string, tdsAmount: number): Promi
     (e) => e.owner_id === owner && e.source === 'invoice_payment' && e.linked_invoice_id === invoiceId
   );
 
-  if (inv.status === 'paid' && entries.length === 1) {
+  const [onlyEntry] = entries;
+  if (inv.status === 'paid' && entries.length === 1 && onlyEntry) {
     // The common case, unchanged from before partial payments existed: one
     // payment covers the whole invoice, so keep its recorded amount net of
     // TDS in sync as the TDS figure is corrected.
-    await table<FinanceEntry>('finance_entries').update(entries[0].id, {
+    await table<FinanceEntry>('finance_entries').update(onlyEntry.id, {
       amount: Math.max(0, grandTotal(inv) - clean),
       tds_amount: clean > 0 ? clean : null,
     });
