@@ -686,8 +686,9 @@ create table tracked_packages (
   name                  text not null,
   description           text not null default '',
   emoji_icon            text not null default '📦',
-  platform              text not null check (platform in ('npm', 'pypi', 'github', 'chrome_web_store')),
-  platform_identifier   text not null,
+  platform              text not null check (platform in ('npm', 'pypi', 'github', 'vscode_marketplace', 'figma_plugin', 'snapchat_lens', 'chrome_web_store', 'saas')),
+  platform_identifier   text not null default '',
+  github_repo           text,
   family                text,
   created_at            timestamptz not null default now()
 );
@@ -702,7 +703,11 @@ create table metric_snapshots (
   installs       integer,
   rating         numeric,
   review_count   integer,
-  fetch_ok       boolean not null default true
+  users          integer,
+  mrr            numeric,
+  source         text not null default 'auto' check (source in ('auto', 'manual')),
+  fetch_ok       boolean not null default true,
+  fetch_error    text
 );
 
 create index metric_snapshots_package_idx on metric_snapshots(package_id, captured_at desc);

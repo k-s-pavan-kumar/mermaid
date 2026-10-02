@@ -19,8 +19,7 @@ export default async function ReleaseStatsPage() {
   return (
     <Shell active="release-stats" title="Release Stats" crumb="Products">
       <p className="text-muted" style={{ marginTop: -8, marginBottom: 18, maxWidth: 520 }}>
-        Stars, downloads, and installs across everything you&apos;ve shipped — pulled in
-        automatically, never typed in.
+        Stars, downloads, installs and SaaS growth across everything you&apos;ve shipped.
       </p>
 
       <div className="stats" style={{ marginBottom: 20 }}>
@@ -34,17 +33,24 @@ export default async function ReleaseStatsPage() {
           <div className="val">{fmtNum(summary.totalDownloads)}</div>
           {summary.downloadsDeltaWeek !== 0 && <div className="text-muted text-sm">{summary.downloadsDeltaWeek > 0 ? '+' : ''}{fmtNum(summary.downloadsDeltaWeek)} this week</div>}
         </div>
-        <div className="stat"><div className="lbl">Packages tracked</div><div className="val">{summary.packagesTracked}</div></div>
+        <div className="stat"><div className="lbl">Products tracked</div><div className="val">{summary.packagesTracked}</div></div>
+        {summary.hasSaas && (
+          <>
+            <div className="stat"><div className="lbl">SaaS active users</div><div className="val">{fmtNum(summary.totalUsers)}</div></div>
+            <div className="stat"><div className="lbl">SaaS MRR</div><div className="val">{fmtNum(summary.totalMrr)}</div></div>
+          </>
+        )}
       </div>
 
       <ReleaseStatsClient groups={groups} />
 
       <p className="text-muted" style={{ fontSize: 12, marginTop: 20, maxWidth: 700, lineHeight: 1.6 }}>
-        Every number here is pulled, not entered. npm and GitHub figures come from their
-        public APIs on a manual &ldquo;Sync now&rdquo; (there&apos;s no background job in this
-        deployment yet). If a source is briefly unreachable, the card keeps its last known
-        values and marks them stale rather than showing a zero. Chrome Web Store has no
-        public API to pull from, so those cards are entered and refreshed by hand.
+        npm, PyPI, GitHub and VS Code Marketplace numbers are pulled from their public APIs when
+        you press &ldquo;Sync now&rdquo; (there&apos;s no background job in this deployment yet).
+        Figma plugins, Snapchat Lenses, the Chrome Web Store and SaaS products have no public
+        stats API, so those numbers are entered with &ldquo;Edit&rdquo; and are never overwritten
+        by a sync. If a source fails, the card keeps its last values and says why, rather than
+        showing a zero. Set <code>GITHUB_TOKEN</code> to avoid GitHub&apos;s 60-requests/hour limit.
       </p>
     </Shell>
   );

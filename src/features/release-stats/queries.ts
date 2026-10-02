@@ -40,6 +40,9 @@ export function groupByFamily(rows: PackageWithMetrics[]): { family: string; row
 }
 
 export interface ReleaseStatsSummary {
+  totalMrr: number;
+  totalUsers: number;
+  hasSaas: boolean;
   totalStars: number;
   starsDeltaWeek: number;
   totalDownloads: number;
@@ -48,16 +51,20 @@ export interface ReleaseStatsSummary {
 }
 
 export function summarize(rows: PackageWithMetrics[]): ReleaseStatsSummary {
-  let totalStars = 0, starsDeltaWeek = 0, totalDownloads = 0, downloadsDeltaWeek = 0;
+  let totalStars = 0, starsDeltaWeek = 0, totalDownloads = 0, downloadsDeltaWeek = 0, totalMrr = 0, totalUsers = 0;
   for (const r of rows) {
+    // SaaS products report users + MRR; they don't add to "downloads/installs".
+    totalMrr += r.latest?.mrr ?? 0;
+    totalUsers += r.latest?.users ?? 0;
+    const isSaas = r.pkg.platform === 'saas';
     const stars = r.latest?.stars ?? 0;
-    const dls = (r.latest?.downloads_30d ?? 0) + (r.latest?.installs ?? 0);
+    const dls = isSaas ? 0 : (r.latest?.downloads_30d ?? 0) + (r.latest?.installs ?? 0);
     totalStars += stars;
     totalDownloads += dls;
     if (r.previous) {
       starsDeltaWeek += stars - (r.previous.stars ?? 0);
-      downloadsDeltaWeek += dls - ((r.previous.downloads_30d ?? 0) + (r.previous.installs ?? 0));
+      downloadsDeltaWeek += dls - (isSaas ? 0 : (r.previous.downloads_30d ?? 0) + (r.previous.installs ?? 0));
     }
   }
-  return { totalStars, starsDeltaWeek, totalDownloads, downloadsDeltaWeek, packagesTracked: rows.length };
+  return { totalStars, starsDeltaWeek, totalDownloads, downloadsDeltaWeek, packagesTracked: rows.length, totalMrr, totalUsers, hasSaas: rows.some((r) => r.pkg.platform === 'saas') };
 }

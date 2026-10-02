@@ -919,6 +919,8 @@ img{max-width:100%;height:auto;}
 .rs-tag{display:inline-flex;align-items:center;gap:5px;font-size:10px;padding:2px 8px;border-radius:20px;}
 .rs-tag.ok{color:var(--sage);background:var(--sage-soft);}
 .rs-tag.stale{color:var(--gold);background:var(--gold-soft);}
+.rs-tag.manual{color:var(--muted);background:var(--sidebar);border:1px solid var(--border);}
+.rs-note{margin-top:10px;font-size:11.5px;color:var(--gold);background:var(--gold-soft);border-radius:8px;padding:6px 10px;}
 .rs-sub-pkgs{margin-top:12px;padding-top:12px;border-top:1px solid var(--border-light);display:flex;flex-direction:column;gap:8px;}
 .rs-sub-pkg{display:flex;justify-content:space-between;align-items:center;padding-left:48px;font-size:12.5px;}
 .rs-sub-pkg .name{color:var(--muted);}
