@@ -7,6 +7,8 @@ import {
   logSubmission, moveToTriaged, moveToAccepted, moveToPaid, moveBack,
   markRejectedOrDuplicate, deleteBountyCase,
 } from '../actions';
+import { ActionButton } from '@/components/ActionButton';
+import { SubmitButton } from '@/components/SubmitButton';
 
 function fmt(n: number | null, ccy = 'INR') {
   if (n === null) return '—';
@@ -55,7 +57,7 @@ function LogSubmissionModal({ onClose }: { onClose: () => void }) {
           </div>
           <div className="modal-foot">
             <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn">Add to Submitted</button>
+            <SubmitButton className="btn">Add to Submitted</SubmitButton>
           </div>
         </form>
       </div>
@@ -122,25 +124,25 @@ export function BountyBoard({ cases }: { cases: BountyCase[] }) {
                     <div className="bb-card-actions">
                       {col.key === 'submitted' && (
                         <>
-                          <button type="button" className="mini-btn" onClick={() => void moveToTriaged(c.id)}>Move to Triaged →</button>
-                          <button type="button" className="mini-btn ghost" onClick={() => void markRejectedOrDuplicate(c.id, 'rejected')}>Reject</button>
+                          <ActionButton className="mini-btn" action={() => moveToTriaged(c.id)}>Move to Triaged →</ActionButton>
+                          <ActionButton className="mini-btn ghost" action={() => markRejectedOrDuplicate(c.id, 'rejected')}>Reject</ActionButton>
                         </>
                       )}
                       {col.key === 'triaged' && (
                         <>
                           <button type="button" className="mini-btn" onClick={() => setAcceptId(c.id)}>Move to Accepted →</button>
-                          <button type="button" className="mini-btn ghost" onClick={() => void moveBack(c.id, 'submitted')}>← Back</button>
-                          <button type="button" className="mini-btn ghost" onClick={() => void markRejectedOrDuplicate(c.id, 'duplicate')}>Duplicate</button>
+                          <ActionButton className="mini-btn ghost" action={() => moveBack(c.id, 'submitted')}>← Back</ActionButton>
+                          <ActionButton className="mini-btn ghost" action={() => markRejectedOrDuplicate(c.id, 'duplicate')}>Duplicate</ActionButton>
                         </>
                       )}
                       {col.key === 'accepted' && (
                         <>
                           <button type="button" className="mini-btn" onClick={() => setPayId(c.id)}>Move to Paid →</button>
-                          <button type="button" className="mini-btn ghost" onClick={() => void moveBack(c.id, 'triaged')}>← Back</button>
+                          <ActionButton className="mini-btn ghost" action={() => moveBack(c.id, 'triaged')}>← Back</ActionButton>
                         </>
                       )}
                       {col.key === 'paid' && (
-                        <button type="button" className="mini-btn ghost" onClick={() => void deleteBountyCase(c.id)}>Delete</button>
+                        <ActionButton className="mini-btn ghost" action={() => deleteBountyCase(c.id)}>Delete</ActionButton>
                       )}
                     </div>
                   </div>
@@ -162,7 +164,7 @@ export function BountyBoard({ cases }: { cases: BountyCase[] }) {
               <div key={c.id} className="bb-closed-row">
                 <span>{c.title}</span>
                 <span className="text-muted text-sm">{c.program_name} · {c.status}</span>
-                <button type="button" className="mini-btn ghost" onClick={() => void deleteBountyCase(c.id)}>Delete</button>
+                <ActionButton className="mini-btn ghost" action={() => deleteBountyCase(c.id)}>Delete</ActionButton>
               </div>
             ))}
           </div>
@@ -181,7 +183,7 @@ export function BountyBoard({ cases }: { cases: BountyCase[] }) {
               <input id="confirmed_payout" name="confirmed_payout" type="number" min={0} step="1" required style={{ width: '100%' }} />
               <div className="modal-foot">
                 <button type="button" className="btn-ghost" onClick={() => setAcceptId(null)}>Cancel</button>
-                <button type="submit" className="btn">Move to Accepted</button>
+                <SubmitButton className="btn">Move to Accepted</SubmitButton>
               </div>
             </form>
           </div>
@@ -199,7 +201,7 @@ export function BountyBoard({ cases }: { cases: BountyCase[] }) {
                 defaultValue={cases.find((c) => c.id === payId)?.confirmed_payout ?? undefined} style={{ width: '100%' }} />
               <div className="modal-foot">
                 <button type="button" className="btn-ghost" onClick={() => setPayId(null)}>Cancel</button>
-                <button type="submit" className="btn">Move to Paid</button>
+                <SubmitButton className="btn">Move to Paid</SubmitButton>
               </div>
             </form>
           </div>

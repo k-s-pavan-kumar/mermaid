@@ -4,6 +4,7 @@ import { getSettings } from '@/features/settings/queries';
 import {
   getMonthLedger, getCategoryBreakdown, getDailyNet, getYearFinance,
   getCustomCategories, getCategoryRules, getObligationsOverview, getTdsSummary,
+  getStreamsOverview, getIncomeStreams,
 } from '@/features/daily-finance/queries';
 import { DailyFinanceClient } from '@/features/daily-finance/components/DailyFinanceClient';
 import { Shell } from '@/components/Shell';
@@ -21,6 +22,7 @@ export default async function DailyFinancePage() {
   const [
     { days, totals }, categoryBreakdown, dailyNet, { totals: yearTotals, months },
     customCategories, categoryRules, obligations, tdsYtd,
+    { overview: streamsOverview, incomeCategories }, incomeStreams,
   ] = await Promise.all([
     getMonthLedger(email, monthStart),
     getCategoryBreakdown(email, monthStart),
@@ -30,6 +32,8 @@ export default async function DailyFinancePage() {
     getCategoryRules(email),
     getObligationsOverview(email, monthStart),
     getTdsSummary(email, year),
+    getStreamsOverview(email, year, today),
+    getIncomeStreams(email),
   ]);
 
   const monthLabel = new Date(monthStart + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -54,6 +58,9 @@ export default async function DailyFinancePage() {
         categoryRules={categoryRules}
         obligations={obligations}
         tdsYtd={tdsYtd}
+        streamsOverview={streamsOverview}
+        incomeStreams={incomeStreams}
+        incomeCategories={incomeCategories}
       />
     </Shell>
   );

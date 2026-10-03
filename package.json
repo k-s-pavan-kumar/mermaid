@@ -22,7 +22,9 @@
     "supabase:types": "supabase gen types typescript --project-id \"$SUPABASE_PROJECT_ID\" --schema public > src/types/database.types.ts",
     "verify:new-features": "tsx scripts/verify-new-features.ts",
     "verify:project-rate": "tsx scripts/verify-project-rate.ts",
-    "verify:retainer": "tsx scripts/verify-retainer.ts"
+    "verify:retainer": "tsx scripts/verify-retainer.ts",
+    "verify:analytics": "tsx scripts/verify-analytics.ts",
+    "verify:streams": "tsx scripts/verify-income-streams.ts"
   },
   "dependencies": {
     "next": "^15.0.0",

@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from 'react';
 import type { NeedWithSource } from '../queries';
 import { addNeed, relinkNeed, markPurchased, acknowledgeNotification, deleteNeed } from '../actions';
 import { NEED_ICON_CHOICES, NEED_CATEGORY_CHOICES } from '../types';
+import { ActionButton } from '@/components/ActionButton';
+import { SubmitButton } from '@/components/SubmitButton';
 
 function fmt(n: number, ccy = 'INR') {
   return (ccy === 'INR' ? '₹' : ccy + ' ') + Math.round(n).toLocaleString('en-IN');
@@ -131,12 +133,12 @@ export function RewardVaultClient({
                 <span className={`rv-pill ${pill?.cls}`}>
                   {n.status === 'cooling_off' ? `Cooling off · ${hoursLeft(n.cooldown_ends_at)}h left` : pill?.label}
                 </span>
-                {n.status === 'ready' && <button type="button" className="mini-btn" onClick={() => void markPurchased(n.id)}>Mark purchased</button>}
+                {n.status === 'ready' && <ActionButton className="mini-btn" action={() => markPurchased(n.id)}>Mark purchased</ActionButton>}
                 {(n.status === 'released' || n.status === 'expired') && (
                   <button type="button" className="mini-btn" onClick={() => setRelinkTarget(n)}>{n.status === 'released' ? 'Relink →' : 'Re-earn →'}</button>
                 )}
                 {(n.status === 'released' || n.status === 'expired' || n.status === 'purchased') && (
-                  <button type="button" className="mini-btn ghost" onClick={() => void deleteNeed(n.id)}>Delete</button>
+                  <ActionButton className="mini-btn ghost" action={() => deleteNeed(n.id)}>Delete</ActionButton>
                 )}
               </div>
               <div className="rv-dates">
@@ -301,7 +303,7 @@ function NeedModal({
 
           <div className="modal-foot">
             <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn">{isAdd ? 'Add need' : 'Relink'}</button>
+            <SubmitButton className="btn">{isAdd ? 'Add need' : 'Relink'}</SubmitButton>
           </div>
         </form>
       </div>

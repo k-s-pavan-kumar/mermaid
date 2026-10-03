@@ -3,6 +3,7 @@ import { getSessionEmail } from '@/lib/auth/session';
 import { getAlerts, getHiddenAlerts } from '@/features/notifications/queries';
 import { dismissAlert, snoozeAlert, restoreAlert, markAllRead } from '@/features/notifications/actions';
 import { Shell } from '@/components/Shell';
+import { SubmitButton } from '@/components/SubmitButton';
 
 const LEVEL_LABEL: Record<string, string> = {
   critical: 'Needs attention', warning: 'Coming up', info: 'Worth a look',
@@ -22,7 +23,7 @@ export default async function NotificationsPage() {
 
   const action = unreadKeys.length > 0 ? (
     <form action={async () => { 'use server'; await markAllRead(unreadKeys); }}>
-      <button type="submit" className="btn-ghost">Mark all read</button>
+      <SubmitButton className="btn-ghost">Mark all read</SubmitButton>
     </form>
   ) : null;
 
@@ -58,10 +59,10 @@ export default async function NotificationsPage() {
                 </span>
                 <span style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
                   <form action={async () => { 'use server'; await snoozeAlert(a.id, 3); }}>
-                    <button type="submit" className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }}>Snooze 3d</button>
+                    <SubmitButton className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }}>Snooze 3d</SubmitButton>
                   </form>
                   <form action={async () => { 'use server'; await dismissAlert(a.id); }}>
-                    <button type="submit" className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }}>Dismiss</button>
+                    <SubmitButton className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }}>Dismiss</SubmitButton>
                   </form>
                 </span>
               </div>
@@ -83,7 +84,7 @@ export default async function NotificationsPage() {
                   {a.snoozedUntil && !a.dismissed && ` · back ${new Date(a.snoozedUntil).toLocaleDateString()}`}
                 </span>
                 <form action={async () => { 'use server'; await restoreAlert(a.id); }}>
-                  <button type="submit" className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }}>Restore</button>
+                  <SubmitButton className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }}>Restore</SubmitButton>
                 </form>
               </div>
             ))}

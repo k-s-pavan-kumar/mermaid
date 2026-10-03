@@ -1,0 +1,11 @@
+{
+  "name": "My Figma plugin",
+  "id": "0000000000000000000",
+  "api": "1.0.0",
+  "main": "code.js",
+  "editorType": ["figma"],
+  "networkAccess": {
+    "allowedDomains": ["https://crm.example.com"],
+    "reasoning": "Anonymous usage counts"
+  }
+}

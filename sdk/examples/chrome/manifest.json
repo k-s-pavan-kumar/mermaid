@@ -1,0 +1,8 @@
+{
+  "manifest_version": 3,
+  "name": "My extension",
+  "version": "1.0.0",
+  "permissions": ["storage"],
+  "action": { "default_popup": "popup.html" },
+  "background": { "service_worker": "background.js", "type": "module" }
+}

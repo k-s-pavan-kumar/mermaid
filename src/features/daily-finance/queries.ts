@@ -5,6 +5,12 @@ import type {
   FinanceCategory, FinanceCategoryRule, FinanceObligation, ObligationView,
 } from './types';
 import { newId } from '@/lib/id';
+import {
+  assignCategories, buildStreamsOverview, knownIncomeCategories, STREAM_COLORS,
+  type IncomeStream, type StreamsOverview,
+} from './streams';
+import { SALARY_CATEGORY, categoryForProjectType } from './types';
+
 
 async function entriesFor(ownerId: string, from: string, to: string): Promise<FinanceEntry[]> {
   const rows = await table<FinanceEntry>('finance_entries').where(
@@ -279,4 +285,98 @@ export async function insertRewardVaultExpense(input: {
     created_at: new Date().toISOString(),
     linked_need_id: input.linkedNeedId,
   });
+}
+
+// ---------------------------------------------------------------------------
+// Income streams (yearly targets) — see streams.ts for the rules.
+// ---------------------------------------------------------------------------
+
+const FIXED_INCOME_CATEGORIES = [
+  SALARY_CATEGORY, 'Bug bounty',
+  ...(['client', 'freelance', 'institute', 'teaching', 'marketing', 'internal', 'opensource'] as const).map(categoryForProjectType),
+];
+
+export async function getIncomeStreams(ownerId: string): Promise<IncomeStream[]> {
+  const rows = await table<IncomeStream>('income_streams').where((s) => s.owner_id === ownerId);
+  return rows.map((s) => ({ ...s, categories: s.categories ?? [], targets: s.targets ?? {} }))
+    .sort((a, b) => a.sort_order - b.sort_order || a.created_at.localeCompare(b.created_at));
+}
+
+export async function getStreamsOverview(ownerId: string, year: number, today: string): Promise<{
+  overview: StreamsOverview;
+  incomeCategories: string[];
+}> {
+  const [entries, streams] = await Promise.all([entriesFor(ownerId, `${year}-01-01`, `${year}-12-31`), getIncomeStreams(ownerId)]);
+  // Offer every income category ever posted, not just this year's, so a stream can be set up before the first payment lands.
+  const all = await table<FinanceEntry>('finance_entries').where((e) => e.owner_id === ownerId && e.type === 'income');
+  return {
+    overview: buildStreamsOverview(entries, streams, year, today),
+    incomeCategories: knownIncomeCategories(all, FIXED_INCOME_CATEGORIES),
+  };
+}
+
+/** Create or update one stream. A category can live in only one stream, so
+ *  any category claimed here is released from the others. Pure DB work (no
+ *  revalidatePath) so the verify suite can call it directly. */
+export async function saveIncomeStream(input: {
+  ownerId: string; id?: string | null; name: string; color?: string | null;
+  categories: string[]; year: number; target: number | null;
+}): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const name = input.name.trim().replace(/\s+/g, ' ').slice(0, 40);
+  if (!name) return { ok: false, error: 'Give the stream a name' };
+  if (input.target !== null && (!Number.isFinite(input.target) || input.target < 0)) return { ok: false, error: 'Target must be a positive number' };
+
+  const streams = await getIncomeStreams(input.ownerId);
+  if (streams.some((s) => s.id !== input.id && s.name.toLowerCase() === name.toLowerCase()))
+    return { ok: false, error: `You already have a stream called “${name}”` };
+
+  const key = String(input.year);
+  let id = input.id ?? '';
+  const existing = streams.find((s) => s.id === id);
+  if (id && !existing) return { ok: false, error: 'That stream no longer exists' };
+
+  if (existing) {
+    const targets = { ...existing.targets };
+    if (input.target && input.target > 0) targets[key] = input.target; else delete targets[key];
+    await table<IncomeStream>('income_streams').update(id, { name, color: input.color || existing.color, targets });
+  } else {
+    id = newId();
+    await table<IncomeStream>('income_streams').insert({
+      id, owner_id: input.ownerId, name,
+      color: input.color || STREAM_COLORS[streams.length % STREAM_COLORS.length]!,
+      categories: [], targets: input.target && input.target > 0 ? { [key]: input.target } : {},
+      sort_order: streams.length, created_at: new Date().toISOString(),
+    });
+  }
+
+  const after = assignCategories([...(await getIncomeStreams(input.ownerId))], id, input.categories);
+  for (const s of after) {
+    const before = streams.find((x) => x.id === s.id);
+    if (s.id === id || (before && before.categories.length !== s.categories.length))
+      await table<IncomeStream>('income_streams').update(s.id, { categories: s.categories });
+  }
+  return { ok: true, id };
+}
+
+export async function removeIncomeStream(ownerId: string, id: string): Promise<boolean> {
+  const s = await table<IncomeStream>('income_streams').find(id);
+  if (!s || s.owner_id !== ownerId) return false;
+  await table<IncomeStream>('income_streams').remove(id);
+  return true;
+}
+
+/** One-click start: a stream per income category already in the ledger, so
+ *  the pie chart works immediately. Skips categories a stream already owns. */
+export async function seedStreamsFromCategories(ownerId: string, year: number): Promise<number> {
+  const streams = await getIncomeStreams(ownerId);
+  const taken = new Set(streams.flatMap((s) => s.categories.map((c) => c.toLowerCase())));
+  const entries = await table<FinanceEntry>('finance_entries').where((e) => e.owner_id === ownerId && e.type === 'income');
+  const cats = knownIncomeCategories(entries, []).filter((c) => !taken.has(c.toLowerCase()));
+  let made = 0;
+  for (const c of cats) {
+    if (streams.some((s) => s.name.toLowerCase() === c.toLowerCase())) continue;
+    const r = await saveIncomeStream({ ownerId, name: c, categories: [c], year, target: null });
+    if (r.ok) made++;
+  }
+  return made;
 }

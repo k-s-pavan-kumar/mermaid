@@ -2,6 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useState, useTransition } from 'react';
+import { toast } from '@/lib/toast';
 
 /**
  * For the places that call a server action from onClick rather than a form
@@ -19,6 +20,8 @@ export function ActionButton({
   confirm,
   title,
   refresh = true,
+  disabled = false,
+  successMessage,
   'aria-label': ariaLabel,
 }: {
   action: () => Promise<void>;
@@ -29,6 +32,9 @@ export function ActionButton({
   confirm?: string;
   title?: string;
   refresh?: boolean;
+  disabled?: boolean;
+  /** Toast shown when the action completes without throwing. */
+  successMessage?: string;
   'aria-label'?: string;
 }) {
   const router = useRouter();
@@ -44,6 +50,11 @@ export function ActionButton({
       try {
         await action();
         if (refresh) router.refresh();
+        if (successMessage) toast(successMessage, 'success');
+      } catch (e) {
+        // Server-action failures used to bubble to the error page; show them
+        // where the click happened instead.
+        toast('That didn\u2019t work', 'error', e instanceof Error ? e.message : undefined);
       } finally {
         setRunning(false);
       }
@@ -59,7 +70,7 @@ export function ActionButton({
       title={title}
       aria-label={ariaLabel}
       aria-busy={busy}
-      disabled={busy}
+      disabled={busy || disabled}
     >
       {busy && <span className="spin" aria-hidden="true" />}
       <span>{busy ? pendingLabel ?? children : children}</span>

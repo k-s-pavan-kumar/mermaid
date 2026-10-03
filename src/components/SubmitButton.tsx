@@ -18,6 +18,7 @@ export function SubmitButton({
   style,
   confirm,
   title,
+  disabled = false,
   'aria-label': ariaLabel,
 }: {
   children: React.ReactNode;
@@ -26,6 +27,7 @@ export function SubmitButton({
   style?: React.CSSProperties;
   confirm?: string;
   title?: string;
+  disabled?: boolean;
   'aria-label'?: string;
 }) {
   const { pending } = useFormStatus();
@@ -38,7 +40,7 @@ export function SubmitButton({
       title={title}
       aria-label={ariaLabel}
       aria-busy={pending}
-      disabled={pending}
+      disabled={pending || disabled}
       onClick={(e) => {
         if (confirm && !window.confirm(confirm)) e.preventDefault();
       }}

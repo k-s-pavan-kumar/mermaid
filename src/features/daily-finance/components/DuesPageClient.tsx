@@ -6,6 +6,7 @@ import type { ObligationView } from '../types';
 import { EXPENSE_CATEGORIES } from '../types';
 import { deleteObligation, deleteFinanceEntry } from '../actions';
 import { AddObligationModal, SettleObligationModal } from './DailyFinanceClient';
+import { ActionButton } from '@/components/ActionButton';
 
 function fmt(n: number, ccy = 'INR') {
   return (ccy === 'INR' ? '₹' : ccy + ' ') + Math.round(n).toLocaleString('en-IN');
@@ -190,7 +191,7 @@ function DuesTable({
                         {payable ? '+ Pay' : '+ Receive'}
                       </button>
                     )}
-                    <button type="button" className="df-del" title="Remove this due" onClick={() => void deleteObligation(o.id)}>×</button>
+                    <ActionButton className="df-del" title="Remove this due" action={() => deleteObligation(o.id)}>×</ActionButton>
                   </td>
                 </tr>
               );

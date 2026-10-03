@@ -44,6 +44,10 @@ export type LocalDB = {
   project_status_log: any[];
   // Optional so older fixtures/db files that predate the day log still type-check.
   day_blocks?: any[];
+  // SDK analytics (Release Stats). Rollups only — raw events are never stored.
+  income_streams?: any[];
+  analytics_daily?: any[];
+  analytics_users?: any[];
 };
 
 export function readDb(): LocalDB {

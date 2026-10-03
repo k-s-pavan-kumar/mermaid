@@ -4,6 +4,7 @@ import { getClientById } from '@/features/clients/queries';
 import { updateClient } from '@/features/clients/actions';
 import { Shell } from '@/components/Shell';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
+import { SubmitButton } from '@/components/SubmitButton';
 
 export default async function EditClientPage({ params }: { params: Promise<{ id: string }> }) {
   const email = await getSessionEmail();
@@ -24,7 +25,7 @@ export default async function EditClientPage({ params }: { params: Promise<{ id:
         <TimezoneSelect defaultValue={client.timezone} />
         <textarea name="notes" defaultValue={client.notes ?? ''} rows={3} />
         <div style={{ display: 'flex', gap: 8 }}>
-          <button type="submit" className="btn">Save</button>
+          <SubmitButton className="btn">Save</SubmitButton>
           <a href="/clients" className="btn-ghost" style={{ display: 'inline-block', textDecoration: 'none', padding: '9px 18px' }}>Cancel</a>
         </div>
       </form>

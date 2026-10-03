@@ -29,7 +29,9 @@ import { getSupabaseUser } from '@/lib/supabase/middleware';
 const COOKIE_NAME = 'meridian_session';
 // /portal/<token> is deliberately public — the token is the credential, and
 // the page it serves is read-only (see src/app/portal/[token]/page.tsx).
-const PUBLIC_PATHS = ['/login', '/api/auth/login', '/portal/'];
+// /api/ingest receives events from the SDK running inside plugins/extensions — no session
+// exists there; the per-product ingest key is the (write-only) credential.
+const PUBLIC_PATHS = ['/login', '/api/auth/login', '/portal/', '/api/ingest'];
 const USE_SUPABASE_AUTH = process.env.DATA_PROVIDER === 'supabase';
 
 export async function middleware(req: NextRequest) {

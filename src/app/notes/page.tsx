@@ -9,6 +9,7 @@ import { Shell } from '@/components/Shell';
 import { SkillPanel } from '@/features/assistant/components/SkillPanel';
 import { skillCards } from '@/features/assistant/skills';
 import { runSkillAction } from '@/features/assistant/actions';
+import { SubmitButton } from '@/components/SubmitButton';
 
 export default async function NotesPage({ searchParams }: { searchParams: Promise<{ note?: string }> }) {
   const email = await getSessionEmail();
@@ -32,7 +33,7 @@ export default async function NotesPage({ searchParams }: { searchParams: Promis
 
   const syncAction = (
     <form action={async () => { 'use server'; await syncVault(); }}>
-      <button type="submit" className="btn-ghost">Sync vault</button>
+      <SubmitButton className="btn-ghost">Sync vault</SubmitButton>
     </form>
   );
 
@@ -106,7 +107,7 @@ export default async function NotesPage({ searchParams }: { searchParams: Promis
               {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             <textarea name="content" placeholder="Write the note…" rows={5} />
-            <button type="submit" className="btn" style={{ width: 'fit-content' }}>Save note</button>
+            <SubmitButton className="btn" style={{ width: 'fit-content' }}>Save note</SubmitButton>
           </form>
         </div>
 
@@ -121,7 +122,7 @@ export default async function NotesPage({ searchParams }: { searchParams: Promis
                   <div className="mono text-muted" style={{ fontSize: 11.5 }}>vault/{activeNote.vault_path}</div>
                 </div>
                 <form action={async () => { 'use server'; await deleteNote(activeNote.id); }}>
-                  <button type="submit" className="btn-link">Delete</button>
+                  <SubmitButton className="btn-link">Delete</SubmitButton>
                 </form>
               </div>
 

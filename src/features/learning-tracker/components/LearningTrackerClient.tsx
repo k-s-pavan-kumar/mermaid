@@ -4,6 +4,8 @@ import { useState } from 'react';
 import type { Course } from '../types';
 import { courseStatus, courseProgressPct, TOPIC_TAG_CHOICES } from '../types';
 import { addCourse, updateLessonProgress, deleteCourse } from '../actions';
+import { ActionButton } from '@/components/ActionButton';
+import { SubmitButton } from '@/components/SubmitButton';
 
 function pretty(iso: string | null) {
   if (!iso) return null;
@@ -72,15 +74,15 @@ export function LearningTrackerClient({
               </div>
               {status !== 'completed' ? (
                 <div className="lt-lesson-controls">
-                  <button type="button" className="mini-btn ghost" disabled={c.completed_lessons <= 0}
-                    onClick={() => void updateLessonProgress(c.id, c.completed_lessons - 1)}>− lesson</button>
-                  <button type="button" className="mini-btn"
-                    onClick={() => void updateLessonProgress(c.id, c.completed_lessons + 1)}>+ lesson done</button>
+                  <ActionButton className="mini-btn ghost" disabled={c.completed_lessons <= 0}
+                    action={() => updateLessonProgress(c.id, c.completed_lessons - 1)}>− lesson</ActionButton>
+                  <ActionButton className="mini-btn"
+                    action={() => updateLessonProgress(c.id, c.completed_lessons + 1)}>+ lesson done</ActionButton>
                 </div>
               ) : (
                 <div className="text-muted text-sm" style={{ marginTop: 8 }}>Completed {pretty(c.completed_at)}</div>
               )}
-              <button type="button" className="mini-btn ghost" style={{ marginTop: 8 }} onClick={() => void deleteCourse(c.id)}>Remove</button>
+              <ActionButton className="mini-btn ghost" style={{ marginTop: 8 }} action={() => deleteCourse(c.id)}>Remove</ActionButton>
             </div>
           );
         })}
@@ -126,7 +128,7 @@ export function LearningTrackerClient({
               )}
               <div className="modal-foot">
                 <button type="button" className="btn-ghost" onClick={() => setAddOpen(false)}>Cancel</button>
-                <button type="submit" className="btn">Add course</button>
+                <SubmitButton className="btn">Add course</SubmitButton>
               </div>
             </form>
           </div>

@@ -10,6 +10,10 @@ import {
   createObligation, settleObligation, deleteObligation,
   addCategoryRule, deleteCategoryRule, addCategory,
 } from '../actions';
+import { ActionButton } from '@/components/ActionButton';
+import { SubmitButton } from '@/components/SubmitButton';
+import { IncomeStreamsPanel } from './IncomeStreamsPanel';
+import type { IncomeStream, StreamsOverview } from '../streams';
 
 function fmt(n: number, ccy = 'INR') {
   return (ccy === 'INR' ? '₹' : ccy + ' ') + Math.round(n).toLocaleString('en-IN');
@@ -36,6 +40,7 @@ export function DailyFinanceClient({
   monthLabel, days, monthTotals, categoryBreakdown, dailyNet,
   yearLabel, yearTotals, monthRows, currency,
   customCategories, categoryRules, obligations, tdsYtd,
+  streamsOverview, incomeStreams, incomeCategories,
 }: {
   monthLabel: string;
   days: DayGroup[];
@@ -50,6 +55,9 @@ export function DailyFinanceClient({
   categoryRules: FinanceCategoryRule[];
   obligations: ObligationView[];
   tdsYtd: number;
+  streamsOverview: StreamsOverview;
+  incomeStreams: IncomeStream[];
+  incomeCategories: string[];
 }) {
   const [view, setView] = useState<'month' | 'year'>('month');
   const [modalOpen, setModalOpen] = useState(false);
@@ -120,7 +128,7 @@ export function DailyFinanceClient({
                         {e.type === 'income' ? '+' : '−'}{money(e.amount)}
                       </span>
                       {['manual', 'reward_vault', 'salary', 'obligation'].includes(e.source) && (
-                        <button type="button" className="df-del" title="Delete" onClick={() => void deleteFinanceEntry(e.id)}>×</button>
+                        <ActionButton className="df-del" title="Delete" action={() => deleteFinanceEntry(e.id)}>×</ActionButton>
                       )}
                     </div>
                   ))}
@@ -183,7 +191,7 @@ export function DailyFinanceClient({
                                       {payable ? '+ Pay' : '+ Receive'}
                                     </button>
                                   )}
-                                  <button type="button" className="df-del" title="Remove this due" onClick={() => void deleteObligation(o.id)}>×</button>
+                                  <ActionButton className="df-del" title="Remove this due" action={() => deleteObligation(o.id)}>×</ActionButton>
                                 </td>
                               </tr>
                               {ov.payments.length > 0 && (
@@ -193,7 +201,7 @@ export function DailyFinanceClient({
                                     {ov.payments.map((p) => (
                                       <span key={p.id} className="df-pay-chip">
                                         {money(p.amount)} · {shortDay(p.date)}
-                                        <button type="button" className="df-del" title="Delete this payment" onClick={() => void deleteFinanceEntry(p.id)}>×</button>
+                                        <ActionButton className="df-del" title="Delete this payment" action={() => deleteFinanceEntry(p.id)}>×</ActionButton>
                                       </span>
                                     ))}
                                   </td>
@@ -255,6 +263,8 @@ export function DailyFinanceClient({
             <div className="stat"><div className="lbl">Net savings YTD</div><div className={`val ${yearTotals.net >= 0 ? 'pos' : 'neg'}`}>{money(yearTotals.net)}</div></div>
             <div className="stat"><div className="lbl">TDS deducted · {yearLabel} YTD</div><div className="val">{money(tdsYtd)}</div></div>
           </div>
+
+          <IncomeStreamsPanel overview={streamsOverview} streams={incomeStreams} incomeCategories={incomeCategories} currency={currency} />
 
           <div className="card">
             <div className="df-panel-head"><span>Income vs. expenses — {yearLabel}</span></div>
@@ -361,7 +371,7 @@ function AddExpenseModal({ onClose, categories, rules }: { onClose: () => void; 
           {rulesOpen && <CategoryRulesManager rules={rules} categories={categories} />}
           <div className="modal-foot">
             <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn">Add expense</button>
+            <SubmitButton className="btn">Add expense</SubmitButton>
           </div>
         </form>
       </div>
@@ -380,7 +390,7 @@ function CategoryRulesManager({ rules, categories }: { rules: FinanceCategoryRul
           {rules.map((r) => (
             <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12.5 }}>
               <span>&ldquo;{r.keyword}&rdquo; → {r.category}</span>
-              <button type="button" className="df-del" title="Remove rule" onClick={() => void deleteCategoryRule(r.id)}>×</button>
+              <ActionButton className="df-del" title="Remove rule" action={() => deleteCategoryRule(r.id)}>×</ActionButton>
             </div>
           ))}
         </div>
@@ -389,7 +399,7 @@ function CategoryRulesManager({ rules, categories }: { rules: FinanceCategoryRul
         <input name="keyword" type="text" placeholder="e.g. bike" required style={{ flex: 1, fontSize: 12.5 }} />
         <span style={{ fontSize: 12.5, alignSelf: 'center' }}>→</span>
         <input name="category" type="text" list="df-category-options-expense" placeholder="e.g. Travel" required style={{ flex: 1, fontSize: 12.5 }} />
-        <button type="submit" className="btn-ghost" style={{ fontSize: 12 }}>Add</button>
+        <SubmitButton className="btn-ghost" style={{ fontSize: 12 }}>Add</SubmitButton>
       </form>
     </div>
   );
@@ -427,7 +437,7 @@ function AddSalaryModal({ onClose }: { onClose: () => void }) {
           </div>
           <div className="modal-foot">
             <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn">Add salary</button>
+            <SubmitButton className="btn">Add salary</SubmitButton>
           </div>
         </form>
       </div>
@@ -498,7 +508,7 @@ export function AddObligationModal({ onClose, categories }: { onClose: () => voi
           </div>
           <div className="modal-foot">
             <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn">Add due</button>
+            <SubmitButton className="btn">Add due</SubmitButton>
           </div>
         </form>
       </div>
@@ -548,7 +558,7 @@ export function SettleObligationModal({ view, onClose, money }: { view: Obligati
           </div>
           <div className="modal-foot">
             <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn">{payable ? 'Add payment' : 'Add received amount'}</button>
+            <SubmitButton className="btn">{payable ? 'Add payment' : 'Add received amount'}</SubmitButton>
           </div>
         </form>
       </div>
@@ -621,9 +631,9 @@ function CategorySelect({ id, name, categories, value, onChange }: {
             value={draft} onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void commit(); } }}
             style={{ flex: 1, fontSize: 13 }} />
-          <button type="button" className="btn" style={{ fontSize: 12.5 }} disabled={saving || !draft.trim()} onClick={() => void commit()}>
+          <ActionButton className="btn" style={{ fontSize: 12.5 }} disabled={saving || !draft.trim()} action={() => commit()}>
             {saving ? 'Saving…' : 'Save'}
-          </button>
+          </ActionButton>
           <button type="button" className="btn-ghost" style={{ fontSize: 12.5 }} onClick={() => { setAdding(false); setDraft(''); setError(''); }}>Cancel</button>
         </div>
       )}

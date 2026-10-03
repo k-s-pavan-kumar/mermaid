@@ -5,7 +5,7 @@ import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
 import type { FinanceEntry, FinanceCategory, FinanceCategoryRule, FinanceObligation } from './types';
 import { EXPENSE_CATEGORIES, SALARY_CATEGORY } from './types';
-import { insertIncomeEntry, insertRewardVaultExpense } from './queries';
+import { insertIncomeEntry, insertRewardVaultExpense, saveIncomeStream, removeIncomeStream, seedStreamsFromCategories } from './queries';
 import { newId } from '@/lib/id';
 import { todayIso } from '@/lib/tz/today';
 
@@ -321,4 +321,46 @@ export async function postRewardVaultExpense(input: {
   await insertRewardVaultExpense(input);
   revalidatePath('/daily-finance');
   revalidatePath('/dashboard');
+}
+
+
+// ---------------------------------------------------------------------------
+// Income streams — yearly targets. These never create income; they only
+// decide which bucket existing, auto-posted income is counted in.
+// ---------------------------------------------------------------------------
+export interface StreamActionResult { ok: boolean; message: string }
+
+export async function saveStream(formData: FormData): Promise<StreamActionResult> {
+  const owner = await requireOwner();
+  const rawTarget = String(formData.get('target') ?? '').replace(/[,\s₹]/g, '').trim();
+  const year = Number(formData.get('year'));
+  if (!Number.isInteger(year) || year < 2000 || year > 2100) return { ok: false, message: 'Invalid year' };
+  if (rawTarget !== '' && !Number.isFinite(Number(rawTarget))) return { ok: false, message: 'Target must be a number' };
+
+  const res = await saveIncomeStream({
+    ownerId: owner,
+    id: String(formData.get('id') ?? '') || null,
+    name: String(formData.get('name') ?? ''),
+    color: String(formData.get('color') ?? '') || null,
+    categories: formData.getAll('categories').map(String),
+    year,
+    target: rawTarget === '' ? null : Number(rawTarget),
+  });
+  if (!res.ok) return { ok: false, message: res.error };
+  revalidatePath('/daily-finance');
+  return { ok: true, message: formData.get('id') ? 'Stream saved' : 'Stream added' };
+}
+
+export async function deleteStream(id: string): Promise<void> {
+  const owner = await requireOwner();
+  if (await removeIncomeStream(owner, id)) revalidatePath('/daily-finance');
+}
+
+export async function createStreamsFromIncome(year: number): Promise<StreamActionResult> {
+  const owner = await requireOwner();
+  const made = await seedStreamsFromCategories(owner, year);
+  revalidatePath('/daily-finance');
+  return made > 0
+    ? { ok: true, message: `Created ${made} stream${made === 1 ? '' : 's'} from your income` }
+    : { ok: false, message: 'No income categories to turn into streams yet' };
 }

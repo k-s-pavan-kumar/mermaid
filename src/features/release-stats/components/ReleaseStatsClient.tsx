@@ -3,7 +3,11 @@
 import { useState, useTransition } from 'react';
 import type { PackageWithMetrics } from '../queries';
 import { PLATFORM_META, PLATFORMS, type ManualField, type Platform, type TrackedPackage, type MetricSnapshot } from '../types';
-import { addTrackedPackage, deleteTrackedPackage, syncAllPackages, updateTrackedPackage } from '../actions';
+import { addTrackedPackage, deleteTrackedPackage, syncAllPackages, updateTrackedPackage, type SyncResult } from '../actions';
+import { SubmitButton } from '@/components/SubmitButton';
+import { ActionButton } from '@/components/ActionButton';
+import { SdkSetupModal } from './SdkSetupModal';
+import { toast } from '@/lib/toast';
 
 function fmtNum(n: number | null): string {
   if (n === null) return '—';
@@ -36,6 +40,13 @@ function sum(rows: PackageWithMetrics[], pick: (s: MetricSnapshot) => number | n
 
 type Headline = { num: string; label: string };
 function headlineMetrics(rows: PackageWithMetrics[], lead: TrackedPackage): [Headline, Headline] {
+  const meta = PLATFORM_META[lead.platform];
+  if (meta.sdk && lead.platform !== 'saas' && rows.some((r) => (r.sdk?.events ?? 0) > 0)) {
+    return [
+      { num: fmtNum(sum(rows, (s) => s.users)), label: 'Active users (30d)' },
+      { num: fmtNum(sum(rows, (s) => s.opens_30d)), label: `${meta.opensLabel} (30d)` },
+    ];
+  }
   if (lead.platform === 'saas') {
     return [
       { num: fmtNum(sum(rows, (s) => s.users)), label: 'Active users' },
@@ -50,9 +61,34 @@ function headlineMetrics(rows: PackageWithMetrics[], lead: TrackedPackage): [Hea
 
 function statusTag(r: PackageWithMetrics): { cls: string; text: string } {
   const meta = PLATFORM_META[r.pkg.platform];
+  if (r.latest && !r.latest.fetch_ok) return { cls: 'stale', text: '⚠ Stale — sync failed' };
+  if (r.pkg.ingest_key) {
+    return (r.sdk?.events ?? 0) > 0 ? { cls: 'ok', text: '📡 SDK live' } : { cls: 'stale', text: '⏳ Waiting for first event' };
+  }
   if (!r.latest) return { cls: 'stale', text: meta.auto ? '⚠ Not synced yet' : '✍ Add numbers' };
-  if (!r.latest.fetch_ok) return { cls: 'stale', text: '⚠ Stale — sync failed' };
   return meta.auto ? { cls: 'ok', text: '🔄 Auto-synced' } : { cls: 'manual', text: '✍ Manual' };
+}
+
+function syncToast(r: SyncResult) {
+  if (r.total === 0) return toast('Nothing to sync yet', 'info', 'Add a product first.');
+  const manual = r.skipped > 0 ? `${r.skipped} manual product${r.skipped > 1 ? 's' : ''} have nothing to pull.` : undefined;
+  if (r.failed.length === 0) return toast(`Synced ${r.synced} product${r.synced === 1 ? '' : 's'}`, 'success', manual);
+  const detail = r.failed.slice(0, 3).map((f) => `${f.name}: ${f.error}`).join('\n') + (r.failed.length > 3 ? `\n…and ${r.failed.length - 3} more` : '');
+  return toast(`${r.failed.length} of ${r.total} failed to sync`, 'error', detail);
+}
+
+/** Store numbers (hand-entered) + SDK return rate, shown under SDK-capable cards. */
+function subLine(rows: PackageWithMetrics[], lead: TrackedPackage): string | null {
+  const meta = PLATFORM_META[lead.platform];
+  if (!meta.sdk || lead.platform === 'saas') return null;
+  const bits: string[] = [];
+  const rr = rows[0]?.latest?.return_rate;
+  if (rr !== null && rr !== undefined && (rows[0]?.sdk?.events ?? 0) > 0) bits.push(`${rr}% came back on 2+ days`);
+  const store = sum(rows, (s) => s.installs);
+  if (store !== null && (rows[0]?.sdk?.events ?? 0) > 0) bits.push(`Store: ${fmtNum(store)} ${meta.installsLabel.toLowerCase()}`);
+  const rating = rows[0]?.latest?.rating;
+  if (rating) bits.push(`★ ${rating}${rows[0]?.latest?.review_count ? ` (${rows[0].latest.review_count})` : ''}`);
+  return bits.length ? bits.join(' · ') : null;
 }
 
 function PackageForm({
@@ -69,7 +105,15 @@ function PackageForm({
           <h2>{mode === 'add' ? 'Track a product' : `Edit ${pkg?.name}`}</h2>
           <button type="button" className="modal-close" onClick={onClose}>✕</button>
         </div>
-        <form action={async (fd) => { await (mode === 'add' ? addTrackedPackage(fd) : updateTrackedPackage(fd)); onClose(); }}>
+        <form action={async (fd) => {
+          try {
+            const r = await (mode === 'add' ? addTrackedPackage(fd) : updateTrackedPackage(fd));
+            toast(r.message, r.ok ? (r.detail && /failed/i.test(r.message) ? 'error' : 'success') : 'error', r.detail);
+            if (r.ok) onClose();
+          } catch (e) {
+            toast('Couldn’t save', 'error', e instanceof Error ? e.message : undefined);
+          }
+        }}>
           {mode === 'edit' && <input type="hidden" name="id" value={pkg?.id} />}
 
           <div style={{ marginBottom: 12 }}>
@@ -101,6 +145,11 @@ function PackageForm({
             </div>
           </div>
 
+          {meta.sdk && mode === 'add' && (
+            <p className="text-muted text-sm" style={{ margin: '0 0 12px' }}>
+              📡 You’ll get an SDK key for first-party stats ({meta.opensLabel.toLowerCase()}, active users, return rate) after adding — open <b>SDK setup</b> on the card.
+            </p>
+          )}
           {!meta.auto && (
             <p className="text-muted text-sm" style={{ margin: '0 0 12px' }}>
               {platform === 'saas'
@@ -145,7 +194,7 @@ function PackageForm({
 
           <div className="modal-foot">
             <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>
-            <button type="submit" className="btn">{mode === 'add' ? (meta.auto ? 'Add & sync' : 'Add') : 'Save & sync'}</button>
+            <SubmitButton className="btn" pendingLabel={mode === 'add' ? 'Adding…' : 'Saving…'}>{mode === 'add' ? (meta.auto ? 'Add & sync' : 'Add') : 'Save & sync'}</SubmitButton>
           </div>
         </form>
       </div>
@@ -156,6 +205,7 @@ function PackageForm({
 export function ReleaseStatsClient({ groups }: { groups: { family: string; rows: PackageWithMetrics[] }[] }) {
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedPackage | null>(null);
+  const [sdkFor, setSdkFor] = useState<TrackedPackage | null>(null);
   const [pending, startTransition] = useTransition();
 
   return (
@@ -164,8 +214,13 @@ export function ReleaseStatsClient({ groups }: { groups: { family: string; rows:
         <span className="text-muted text-sm">
           {groups.length === 0 ? 'Nothing tracked yet.' : `Last synced ${timeAgo(groups[0]?.rows[0]?.latest?.captured_at ?? null)}`}
         </span>
-        <button type="button" className="btn-ghost" disabled={pending} onClick={() => startTransition(() => { void syncAllPackages(); })}>
-          {pending ? 'Syncing…' : '🔄 Sync now'}
+        <button type="button" className={`btn-ghost is-async${pending ? ' is-pending' : ''}`} disabled={pending} aria-busy={pending}
+          onClick={() => startTransition(async () => {
+            try { syncToast(await syncAllPackages()); }
+            catch (e) { toast('Sync failed', 'error', e instanceof Error ? e.message : undefined); }
+          })}>
+          {pending && <span className="spin" aria-hidden="true" />}
+          <span>{pending ? 'Syncing…' : '🔄 Sync now'}</span>
         </button>
       </div>
 
@@ -212,12 +267,15 @@ export function ReleaseStatsClient({ groups }: { groups: { family: string; rows:
                   <span className={`rs-tag ${tag.cls}`}>{tag.text}</span>
                   <div>{timeAgo(lead.latest?.captured_at ?? null)}</div>
                   <div style={{ display: 'flex', gap: 6 }}>
+                    {!multi && PLATFORM_META[lead.pkg.platform].sdk && <button type="button" className="mini-btn" onClick={() => setSdkFor(lead.pkg)}>SDK setup</button>}
                     {!multi && <button type="button" className="mini-btn ghost" onClick={() => setEditing(lead.pkg)}>Edit</button>}
-                    <button type="button" className="mini-btn ghost" onClick={() => void deleteTrackedPackage(lead.pkg.id)}>Remove</button>
+                    <ActionButton className="mini-btn ghost" pendingLabel="Removing…" confirm={`Remove ${g.family}? Its numbers and history will be deleted.`}
+                      successMessage={`Removed ${g.family}`} action={() => deleteTrackedPackage(lead.pkg.id)}>Remove</ActionButton>
                   </div>
                 </div>
               </div>
 
+              {subLine(g.rows, lead.pkg) && <div className="rs-sub-line">{subLine(g.rows, lead.pkg)}</div>}
               {issue && <div className="rs-note">⚠ {issue}</div>}
 
               {multi && (
@@ -244,6 +302,7 @@ export function ReleaseStatsClient({ groups }: { groups: { family: string; rows:
 
       {addOpen && <PackageForm mode="add" onClose={() => setAddOpen(false)} />}
       {editing && <PackageForm key={editing.id} mode="edit" pkg={editing} onClose={() => setEditing(null)} />}
+      {sdkFor && <SdkSetupModal key={sdkFor.id} pkg={sdkFor} onClose={() => setSdkFor(null)} />}
     </>
   );
 }

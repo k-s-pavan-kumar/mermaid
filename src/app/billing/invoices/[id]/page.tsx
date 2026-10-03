@@ -11,6 +11,7 @@ import { DocumentView } from '@/features/billing/components/DocumentView';
 import { PrintButton } from '@/features/billing/components/PrintButton';
 import { ActionButton } from '@/components/ActionButton';
 import type { Project } from '@/features/projects/types';
+import { SubmitButton } from '@/components/SubmitButton';
 
 const money = (n: number, ccy = 'INR') =>
   (ccy === 'INR' ? '₹' : ccy + ' ') + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -116,7 +117,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
               <br />
               <input name="note" type="text" placeholder="optional" style={{ fontSize: 12.5, padding: '4px 8px' }} />
             </label>
-            <button type="submit" className="btn-ghost" style={{ fontSize: 11.5, padding: '5px 10px' }}>Add payment</button>
+            <SubmitButton className="btn-ghost" style={{ fontSize: 11.5, padding: '5px 10px' }}>Add payment</SubmitButton>
           </form>
         )}
       </div>
@@ -129,7 +130,7 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
           <label htmlFor="tds" style={{ fontSize: 12.5 }}>TDS deducted by client</label>
           <input id="tds" name="tds" type="number" min={0} step="0.01" defaultValue={invoice.tds_amount || ''} placeholder="0"
             style={{ width: 110, fontSize: 12.5, padding: '4px 8px' }} />
-          <button type="submit" className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }}>Save</button>
+          <SubmitButton className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }}>Save</SubmitButton>
         </form>
         <span className="text-muted" style={{ fontSize: 11.5 }}>
           Netted out of what posts to Daily Finance{invoice.status === 'paid' ? ' — already applied to the posted entry' : ' once marked paid'}.

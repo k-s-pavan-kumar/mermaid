@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
-import type { ReactNode } from 'react';
+import { Suspense, type ReactNode } from 'react';
 import RegisterServiceWorker from '@/components/RegisterServiceWorker';
+import { NavProgress } from '@/components/NavProgress';
+import { Toaster } from '@/components/Toaster';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -25,6 +27,8 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     <html lang="en">
       <body>
         <RegisterServiceWorker />
+        <Suspense fallback={null}><NavProgress /></Suspense>
+        <Toaster />
         {children}
       </body>
     </html>

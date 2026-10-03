@@ -1,11 +1,22 @@
 import { table } from '@/lib/data';
 import type { TrackedPackage, MetricSnapshot } from './types';
+import { getSummary, type AnalyticsSummary } from './analytics/store';
 
 export interface PackageWithMetrics {
   pkg: TrackedPackage;
+  /** Live SDK numbers (null when the SDK isn't enabled for this product). */
+  sdk: AnalyticsSummary | null;
   latest: MetricSnapshot | null;
   previous: MetricSnapshot | null; // for the week-over-week delta
   history: MetricSnapshot[]; // last 7, oldest first — for the sparkline
+}
+
+function blankSnapshot(pkg: TrackedPackage): MetricSnapshot {
+  return {
+    id: `live_${pkg.id}`, owner_id: pkg.owner_id, package_id: pkg.id, captured_at: new Date().toISOString(),
+    stars: null, downloads_30d: null, installs: null, rating: null, review_count: null, users: null, mrr: null,
+    opens_30d: null, return_rate: null, source: 'sdk', fetch_ok: true, fetch_error: null,
+  };
 }
 
 export async function getPackagesWithMetrics(ownerId: string): Promise<PackageWithMetrics[]> {
@@ -15,9 +26,21 @@ export async function getPackagesWithMetrics(ownerId: string): Promise<PackageWi
   for (const pkg of packages) {
     const snapshots = await table<MetricSnapshot>('metric_snapshots').where((s) => s.package_id === pkg.id);
     const sorted = [...snapshots].sort((a, b) => (a.captured_at < b.captured_at ? 1 : -1));
+    // SDK numbers are read live so they're current on every page load, not
+    // only after "Sync now". A failing read must not take the page down.
+    let sdk: AnalyticsSummary | null = null;
+    if (pkg.ingest_key) { try { sdk = await getSummary(pkg); } catch { sdk = null; } }
+    const base = sorted[0] ?? null;
+    const latest: MetricSnapshot | null = sdk && sdk.events > 0
+      ? {
+          ...(base ?? blankSnapshot(pkg)),
+          users: sdk.active_users, opens_30d: sdk.opens, return_rate: sdk.return_rate, source: 'sdk',
+        }
+      : base;
     out.push({
       pkg,
-      latest: sorted[0] ?? null,
+      sdk,
+      latest,
       previous: sorted.find((s) => Date.parse(sorted[0]?.captured_at ?? '') - Date.parse(s.captured_at) >= 6 * 86_400_000) ?? null,
       history: sorted.slice(0, 7).reverse(),
     });
