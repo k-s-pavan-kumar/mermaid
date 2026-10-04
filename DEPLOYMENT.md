@@ -13,6 +13,9 @@ The first fixes: quotes/invoices being rejected when
 raised against a client with no project, three tables that had no row-level
 security, and adds `notes.content`.
 
+**Journal:** also run `supabase/migrations/014_journal_entries.sql` (new `journal_entries` table; safe to re-run).
+Migrations 005-013 live in `supabase/migrations/` and run in numeric order.
+
 ## 2. Create your login (once)
 
 Supabase → Authentication → Users → **Add user** (email + password, tick

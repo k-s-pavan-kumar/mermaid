@@ -44,6 +44,8 @@ export type LocalDB = {
   project_status_log: any[];
   // Optional so older fixtures/db files that predate the day log still type-check.
   day_blocks?: any[];
+  // Journal (daily personal notes). Optional for the same reason as day_blocks.
+  journal_entries?: any[];
   // SDK analytics (Release Stats). Rollups only — raw events are never stored.
   income_streams?: any[];
   analytics_daily?: any[];

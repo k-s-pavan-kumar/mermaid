@@ -34,6 +34,7 @@ const db: LocalDB = {
   metric_snapshots: [],
   project_status_log: [],
   day_blocks: [],
+  journal_entries: [],
 };
 
 writeDb(db);

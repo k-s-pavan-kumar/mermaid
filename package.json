@@ -24,7 +24,12 @@
     "verify:project-rate": "tsx scripts/verify-project-rate.ts",
     "verify:retainer": "tsx scripts/verify-retainer.ts",
     "verify:analytics": "tsx scripts/verify-analytics.ts",
-    "verify:streams": "tsx scripts/verify-income-streams.ts"
+    "verify:streams": "tsx scripts/verify-income-streams.ts",
+    "verify:journal": "tsx scripts/verify-journal.ts",
+    "journal:remind": "node scripts/journal-reminder.js",
+    "journal:remind:test": "node scripts/journal-reminder.js --test",
+    "journal:remind:install": "node scripts/journal-reminder.js --install",
+    "journal:remind:uninstall": "node scripts/journal-reminder.js --uninstall"
   },
   "dependencies": {
     "next": "^15.0.0",

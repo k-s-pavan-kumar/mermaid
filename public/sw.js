@@ -81,6 +81,31 @@ async function staleWhileRevalidate(request) {
   return cached || (await networkPromise) || Response.error();
 }
 
+// Clicking a journal reminder: focus an existing Meridian window and take it to
+// the journal, or open a new one if none is open. The target comes from the
+// notification's data.url (set in src/features/journal/notify.ts).
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const data = event.notification.data || {};
+  const target = new URL(data.url || '/journal', self.location.origin).href;
+
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      for (const win of windows) {
+        if (new URL(win.url).origin === self.location.origin && 'focus' in win) {
+          await win.focus();
+          if ('navigate' in win) {
+            try { await win.navigate(target); } catch (err) { /* cross-origin or detached — focus is enough */ }
+          }
+          return;
+        }
+      }
+      await self.clients.openWindow(target);
+    })()
+  );
+});
+
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);

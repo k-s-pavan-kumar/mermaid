@@ -9,6 +9,7 @@ import { getProjects } from '@/features/projects/queries';
 import { getClients } from '@/features/clients/queries';
 import { getSettings } from '@/features/settings/queries';
 import { AssistantPanel } from './AssistantPanel';
+import { JournalReminders } from './JournalReminders';
 import { ViewTabs, type ViewKey } from './ViewTabs';
 
 // The OS chrome: sidebar + topbar (with notifications) + live world-clock
@@ -42,6 +43,7 @@ export async function Shell({
     { label: 'Notes & SOPs', href: '/notes', group: 'Page', hint: 'g n' },
     { label: 'Settings', href: '/settings', group: 'Page' },
     { label: 'Notifications', href: '/notifications', group: 'Page' },
+    { label: 'Journal — daily personal notes', href: '/journal', group: 'Personal', hint: 'g j' },
     { label: 'Daily Finance', href: '/daily-finance', group: 'Personal', hint: 'g f' },
     { label: 'Daily Finance — Dues tracker', href: '/daily-finance/dues', group: 'Personal' },
     { label: 'Bug Bounty Pipeline', href: '/bounty-pipeline', group: 'Personal', hint: 'g u' },
@@ -75,6 +77,7 @@ export async function Shell({
       </div>
       <CommandPalette items={items} />
       {email && <AssistantPanel />}
+      {email && <JournalReminders />}
     </div>
   );
 }

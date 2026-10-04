@@ -15,6 +15,7 @@ const ICONS: Record<string, React.ReactNode> = {
   'reward-vault': (<><rect x="4" y="9" width="16" height="11" rx="2" /><path d="M8 9V6a4 4 0 018 0v3" /></>),
   'learning-tracker': (<><path d="M4 6l8-3 8 3-8 3-8-3z" /><path d="M4 6v7c2 1.5 12 1.5 16 0V6" /></>),
   'release-stats': (<><path d="M4 19V10M10 19V4M16 19v-7M4 19h16" /></>),
+  journal: (<><path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3V4z" /><path d="M5 17a3 3 0 013-3h11" /><path d="M9 8h6" /></>),
 };
 
 const LINKS = [
@@ -32,6 +33,7 @@ const LINKS = [
  *  competing with it for attention. See Dashboard's small "Elsewhere"
  *  strip for the equivalent non-distracting summary. */
 const PERSONAL_LINKS = [
+  { href: '/journal', label: 'Journal', key: 'journal' },
   { href: '/daily-finance', label: 'Daily Finance', key: 'daily-finance' },
   { href: '/bounty-pipeline', label: 'Bug Bounty Pipeline', key: 'bounty-pipeline' },
   { href: '/reward-vault', label: 'Reward Vault', key: 'reward-vault' },

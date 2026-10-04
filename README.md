@@ -708,3 +708,58 @@ Seven new tables — `project_status_log`, `finance_entries`, `bounty_cases`,
 and `settings.reward_vault`. All additive; copy-paste statements are in the
 migration block at the top of `supabase/schema.sql`, and RLS is enabled with
 an owner-only policy on every new table.
+
+---
+
+## Journal — daily personal notes, with reminders (`/journal`)
+
+A day-wise place to dump thoughts: sidebar -> **Personal -> Journal** (also `g` then `j`, or Ctrl/Cmd+K).
+Not to be confused with Today's *brain dump*, which is for unscheduled **tasks**; the Journal is free-form
+writing, and Notes & SOPs stays for project documents.
+
+- Several timestamped entries per day, newest first. Edit or delete any entry.
+- "Day" follows the home timezone (`NEXT_PUBLIC_HOME_TZ`), so a note written at 1 a.m. lands on the right day.
+- Browse by the **Days** rail, the previous/next arrows, or the date picker. **Search** covers every day.
+- Ctrl/Cmd + Enter saves from the composer.
+- Data: table `journal_entries` (local: `data/db.local.json`, created on first write; Supabase: run
+  `supabase/migrations/014_journal_entries.sql`).
+
+### Reminders - two layers
+
+| | Works when Meridian is closed? | Setup |
+|---|---|---|
+| **In-browser** (Journal page -> Reminders) | No - only while Meridian is open in a tab or installed-app window | Click *Turn on reminders*, allow notifications |
+| **Desktop helper** (`scripts/journal-reminder.js`) | **Yes** - the OS scheduler runs it | `npm run journal:remind:install` |
+
+Why two: a web page cannot wake itself up once its tabs are closed, so closed-app reminders have to come from
+the operating system.
+
+**In-browser.** Pick an interval (1-6 h), an active window (default 9 am-9 pm) and whether to skip a reminder if
+you already wrote something in that time (asks `/api/journal/last`). Preferences are stored per browser
+(`localStorage`) because notification permission is per browser. Needs https or `localhost`. Clicking the
+notification focuses Meridian and opens the journal (`notificationclick` in `public/sw.js`).
+
+**Desktop helper.**
+
+```
+npm run journal:remind:install -- --every 3     # schedule it (add --dry-run to preview first)
+npm run journal:remind:test                     # show one notification right now
+node scripts/journal-reminder.js --status       # would it fire now, and why / why not
+npm run journal:remind:uninstall
+```
+
+Windows: Task Scheduler task "Meridian Journal Reminder" (runs on battery, catches up after sleep, no console
+window); the toast uses PowerShell's app identity, so Windows labels it "Windows PowerShell". macOS: a launchd
+agent; install `terminal-notifier` for the icon and click-to-open. Linux: a crontab line + `notify-send`
+(the URL is shown in the body; not clickable).
+Options (flags or `.env`): `JOURNAL_REMINDER_EVERY_HOURS`, `_START_HOUR`, `_END_HOUR`, `MERIDIAN_URL`.
+To change the interval, re-run install. Every run logs one line to `data/journal-reminder.log`.
+
+Caveats: clicking a notification opens `MERIDIAN_URL`, so a local install needs the dev server running at that
+moment (set `MERIDIAN_URL` to your deployed address if you use Vercel). "Skip if I just wrote" only works with
+`DATA_PROVIDER=local`; with Supabase the helper always nudges inside the window. The Windows and macOS paths
+could not be executed in the sandbox they were written in - run `--install --dry-run`, then `--test`, to confirm
+on your machine.
+
+`npm run verify:journal` - 100 checks (logic, data layer, reminder rules, helper generators). It runs in a temp
+directory and never touches `data/db.local.json`.
