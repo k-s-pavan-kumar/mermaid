@@ -26,6 +26,7 @@
     "verify:analytics": "tsx scripts/verify-analytics.ts",
     "verify:streams": "tsx scripts/verify-income-streams.ts",
     "verify:journal": "tsx scripts/verify-journal.ts",
+    "verify:icons": "tsx scripts/verify-release-icons.ts",
     "journal:remind": "node scripts/journal-reminder.js",
     "journal:remind:test": "node scripts/journal-reminder.js --test",
     "journal:remind:install": "node scripts/journal-reminder.js --install",

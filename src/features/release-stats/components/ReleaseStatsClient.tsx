@@ -7,6 +7,8 @@ import { addTrackedPackage, deleteTrackedPackage, syncAllPackages, updateTracked
 import { SubmitButton } from '@/components/SubmitButton';
 import { ActionButton } from '@/components/ActionButton';
 import { SdkSetupModal } from './SdkSetupModal';
+import { IconPicker, CardIconModal } from './IconPicker';
+import { defaultIconFor } from '../icon';
 import { toast } from '@/lib/toast';
 
 function fmtNum(n: number | null): string {
@@ -96,6 +98,10 @@ function PackageForm({
 }: { mode: 'add' | 'edit'; pkg?: TrackedPackage; onClose: () => void }) {
   const [platform, setPlatform] = useState<Platform>(pkg?.platform ?? 'npm');
   const meta = PLATFORM_META[platform];
+  // New products follow the platform's default icon until you pick one yourself.
+  const [icon, setIcon] = useState(pkg?.emoji_icon ?? defaultIconFor(pkg?.platform ?? 'npm'));
+  const [iconPicked, setIconPicked] = useState(false);
+  const [iconOpen, setIconOpen] = useState(false);
   const groups = Array.from(new Set(PLATFORMS.map((p) => PLATFORM_META[p].group)));
 
   return (
@@ -116,16 +122,28 @@ function PackageForm({
         }}>
           {mode === 'edit' && <input type="hidden" name="id" value={pkg?.id} />}
 
-          <div style={{ marginBottom: 12 }}>
-            <label className="field-label" htmlFor="name">Name</label>
-            <input id="name" name="name" required defaultValue={pkg?.name} placeholder="e.g. Syntheui React Icons" style={{ width: '100%' }} />
+          <input type="hidden" name="emoji_icon" value={icon} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 12, alignItems: 'end', marginBottom: iconOpen ? 8 : 12 }}>
+            <div>
+              <span className="field-label" style={{ display: 'block' }}>Icon</span>
+              <button type="button" className="rs-pkg-icon is-editable" aria-expanded={iconOpen} title="Choose an icon" onClick={() => setIconOpen((o) => !o)}>{icon}</button>
+            </div>
+            <div>
+              <label className="field-label" htmlFor="name">Name</label>
+              <input id="name" name="name" required defaultValue={pkg?.name} placeholder="e.g. Syntheui React Icons" style={{ width: '100%' }} />
+            </div>
           </div>
+          {iconOpen && (
+            <div style={{ marginBottom: 12 }}>
+              <IconPicker value={icon} onChange={(i) => { setIcon(i); setIconPicked(true); }} defaultIcon={defaultIconFor(platform)} />
+            </div>
+          )}
 
           <div className="grid-2-eq" style={{ marginBottom: 12 }}>
             <div>
               <label className="field-label" htmlFor="platform">Platform</label>
               {mode === 'add' ? (
-                <select id="platform" name="platform" value={platform} onChange={(e) => setPlatform(e.target.value as Platform)} style={{ width: '100%' }}>
+                <select id="platform" name="platform" value={platform} onChange={(e) => { const next = e.target.value as Platform; setPlatform(next); if (!iconPicked) setIcon(defaultIconFor(next)); }} style={{ width: '100%' }}>
                   {groups.map((g) => (
                     <optgroup key={g} label={g}>
                       {PLATFORMS.filter((p) => PLATFORM_META[p].group === g).map((p) => (
@@ -180,15 +198,9 @@ function PackageForm({
           </div>
 
           {mode === 'add' && (
-            <div className="grid-2-eq">
-              <div>
-                <label className="field-label" htmlFor="family">Family (optional)</label>
-                <input id="family" name="family" placeholder="e.g. Syntheui" style={{ width: '100%' }} />
-              </div>
-              <div>
-                <label className="field-label" htmlFor="emoji_icon">Icon</label>
-                <input id="emoji_icon" name="emoji_icon" placeholder="📦" style={{ width: '100%' }} />
-              </div>
+            <div>
+              <label className="field-label" htmlFor="family">Family (optional)</label>
+              <input id="family" name="family" placeholder="e.g. Syntheui" style={{ width: '100%' }} />
             </div>
           )}
 
@@ -206,6 +218,7 @@ export function ReleaseStatsClient({ groups }: { groups: { family: string; rows:
   const [addOpen, setAddOpen] = useState(false);
   const [editing, setEditing] = useState<TrackedPackage | null>(null);
   const [sdkFor, setSdkFor] = useState<TrackedPackage | null>(null);
+  const [iconFor, setIconFor] = useState<{ name: string; ids: string[]; current: string; platform: Platform } | null>(null);
   const [pending, startTransition] = useTransition();
 
   return (
@@ -247,7 +260,10 @@ export function ReleaseStatsClient({ groups }: { groups: { family: string; rows:
             <div key={g.family} className="rs-pkg">
               <div className="rs-pkg-top">
                 <div className="rs-pkg-main">
-                  <div className="rs-pkg-icon">{lead.pkg.emoji_icon}</div>
+                  <button type="button" className="rs-pkg-icon is-editable" title="Change icon" aria-label={`Change icon for ${g.family}`}
+                    onClick={() => setIconFor({ name: g.family, ids: g.rows.map((r) => r.pkg.id), current: lead.pkg.emoji_icon, platform: lead.pkg.platform })}>
+                    {lead.pkg.emoji_icon}
+                  </button>
                   <div>
                     <div className="rs-pkg-name">{g.family}</div>
                     <div className="rs-pkg-sub">{lead.pkg.description}</div>
@@ -303,6 +319,10 @@ export function ReleaseStatsClient({ groups }: { groups: { family: string; rows:
       {addOpen && <PackageForm mode="add" onClose={() => setAddOpen(false)} />}
       {editing && <PackageForm key={editing.id} mode="edit" pkg={editing} onClose={() => setEditing(null)} />}
       {sdkFor && <SdkSetupModal key={sdkFor.id} pkg={sdkFor} onClose={() => setSdkFor(null)} />}
+      {iconFor && (
+        <CardIconModal key={iconFor.ids.join(',')} name={iconFor.name} ids={iconFor.ids} current={iconFor.current}
+          defaultIcon={defaultIconFor(iconFor.platform)} onClose={() => setIconFor(null)} />
+      )}
     </>
   );
 }

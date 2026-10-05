@@ -8,6 +8,7 @@ import { PLATFORM_META, PLATFORMS, type TrackedPackage, type MetricSnapshot, typ
 import { fetchPlatformMetrics, normalizeRepo } from './fetchers';
 import { getSummary, type AnalyticsSummary } from './analytics/store';
 import { newId } from '@/lib/id';
+import { defaultIconFor, normalizeIcon } from './icon';
 
 export interface ActionResult { ok: boolean; message: string; detail?: string }
 export interface SyncResult { total: number; synced: number; skipped: number; failed: { name: string; error: string }[] }
@@ -21,6 +22,14 @@ async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
   if (!email) throw new Error('Not authenticated');
   return email;
+}
+
+/** A card on the board is one family (or one standalone product) and shows a
+ *  single icon, so an icon change has to land on every package in the family —
+ *  otherwise editing a sibling that isn't the first row would look like a no-op. */
+async function familyMembers(pkg: TrackedPackage, owner: string): Promise<TrackedPackage[]> {
+  if (!pkg.family) return [pkg];
+  return table<TrackedPackage>('tracked_packages').where((p) => p.owner_id === owner && p.family === pkg.family);
 }
 
 /** Owner-checked fetch so one user can never touch another's package. */
@@ -99,7 +108,7 @@ export async function addTrackedPackage(formData: FormData): Promise<ActionResul
   const pkg: TrackedPackage = {
     id, owner_id: owner, name,
     description: String(formData.get('description') ?? '').trim(),
-    emoji_icon: String(formData.get('emoji_icon') ?? '').trim() || (platform === 'saas' ? '🚀' : '📦'),
+    emoji_icon: normalizeIcon(formData.get('emoji_icon'), defaultIconFor(platform)),
     platform, platform_identifier: identifier,
     github_repo: normalizeRepo(String(formData.get('github_repo') ?? '')),
     ingest_key: meta.sdk ? newIngestKey() : null,
@@ -138,8 +147,16 @@ export async function updateTrackedPackage(formData: FormData): Promise<ActionRe
     description: String(formData.get('description') ?? existing.description).trim(),
     platform_identifier: identifier,
     github_repo: normalizeRepo(String(formData.get('github_repo') ?? '')),
+    // Field absent or blank → keep the current icon (older forms never sent one).
+    emoji_icon: normalizeIcon(formData.get('emoji_icon'), existing.emoji_icon),
   };
   const updated = (await table<TrackedPackage>('tracked_packages').update(existing.id, patch)) ?? { ...existing, ...patch };
+
+  if (patch.emoji_icon !== existing.emoji_icon) {
+    for (const sib of await familyMembers(existing, owner)) {
+      if (sib.id !== existing.id) await table<TrackedPackage>('tracked_packages').update(sib.id, { emoji_icon: patch.emoji_icon });
+    }
+  }
 
   await recordManualSnapshot(updated, formData);
   const sync = await syncOnePackage(existing.id);
@@ -148,6 +165,30 @@ export async function updateTrackedPackage(formData: FormData): Promise<ActionRe
   return sync.error
     ? { ok: true, message: `Saved ${updated.name}, but the sync failed`, detail: sync.error }
     : { ok: true, message: `Saved ${updated.name}` };
+}
+
+/** Change a card's icon from the board without opening the full edit form.
+ *  `ids` are the package ids shown on that card (a family can have several). */
+export async function setCardIcon(ids: string[], icon: string): Promise<ActionResult> {
+  const owner = await requireOwner();
+  const clean = normalizeIcon(icon, '');
+  if (!clean) return { ok: false, message: 'Pick or type an icon first' };
+  if (!Array.isArray(ids) || ids.length === 0 || ids.length > 50) return { ok: false, message: 'Nothing to update' };
+
+  let changed = 0, found = 0;
+  for (const id of ids) {
+    if (typeof id !== 'string') continue;
+    const pkg = await ownedPackage(id, owner);
+    if (!pkg) continue;
+    found++;
+    for (const m of await familyMembers(pkg, owner)) {
+      if (m.emoji_icon !== clean) { await table<TrackedPackage>('tracked_packages').update(m.id, { emoji_icon: clean }); changed++; }
+    }
+  }
+  revalidatePath('/release-stats');
+  revalidatePath('/dashboard');
+  if (found === 0) return { ok: false, message: 'That product no longer exists' };
+  return { ok: true, message: changed > 0 ? `Icon changed to ${clean}` : `Already using ${clean}` };
 }
 
 export async function deleteTrackedPackage(id: string): Promise<void> {

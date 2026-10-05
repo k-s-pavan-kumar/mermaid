@@ -683,6 +683,15 @@ several npm sub-packages under one umbrella name shows as one rolled-up card
 with per-package figures underneath, each syncing independently so one
 package's failure doesn't affect its siblings.
 
+**Icons.** Each card has its own icon. Click the icon on a card to change it
+(a picker with ~50 curated emoji, or type/paste any emoji — `Win + .` on
+Windows, `Ctrl + Cmd + Space` on macOS), or set it in *Add* / *Edit*. A family
+shows one icon, so changing it changes every package in that family. New
+products start with a per-platform default (🎨 Figma, 🧩 Chrome, 👻 Snapchat,
+🚀 SaaS, …) instead of 📦 for everything; products you already added keep
+whatever they had until you change them. `npm run verify:icons` checks the
+helpers and the picker.
+
 ### Verifying
 `npm run verify:new-features` — 39 checks covering the Reward Vault's full
 state-machine walk (unlock → cooldown → ready → purchased, plus expiry and a

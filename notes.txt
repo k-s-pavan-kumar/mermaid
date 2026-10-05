@@ -1,0 +1,3 @@
+npm run journal:remind:install -- --dry-run   # preview first
+npm run journal:remind:install -- --every 3
+npm run journal:remind:test                   # show one notification now
