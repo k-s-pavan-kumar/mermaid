@@ -518,7 +518,7 @@ create table finance_entries (
   amount             numeric not null check (amount >= 0), -- always positive; sign comes from `type`
   note               text,
   source             text not null check (source in
-                       ('manual', 'invoice_payment', 'bounty_payout', 'reward_vault', 'salary', 'obligation')),
+                       ('manual', 'invoice_payment', 'bounty_payout', 'reward_vault', 'salary', 'obligation', 'invoice_split')),
   created_at         timestamptz not null default now(),
   linked_project_id  uuid references projects(id) on delete set null,
   linked_invoice_id  uuid references invoices(id) on delete set null,
@@ -526,7 +526,11 @@ create table finance_entries (
   linked_need_id     text,  -- references needs(id); same reason
   linked_obligation_id text, -- references finance_obligations(id); no FK since that table is created further below
   -- Tax already deducted at source on this income row (see invoices.tds_amount).
-  tds_amount         numeric
+  tds_amount         numeric,
+  -- Set-asides (see migration 015 / daily-finance/set-aside.ts)
+  linked_payment_id    text,
+  linked_split_rule_id text,
+  split_pct            numeric
 );
 
 create index finance_entries_owner_date_idx on finance_entries(owner_id, date desc);
@@ -915,3 +919,38 @@ create index if not exists income_streams_owner_idx on income_streams(owner_id, 
 alter table income_streams enable row level security;
 drop policy if exists "owner full access" on income_streams;
 create policy "owner full access" on income_streams for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+-- ---------------------------------------------------------------------------
+-- Set-aside rules & investment log (Daily Finance). Mirrors migration 015.
+-- ---------------------------------------------------------------------------
+-- One set-aside per (payment, rule): the idempotency guard in applySplitsForPayment().
+create unique index if not exists finance_entries_split_once_idx
+  on finance_entries(linked_payment_id, linked_split_rule_id) where source = 'invoice_split';
+
+create table if not exists finance_split_rules (
+  id         text primary key,
+  owner_id   uuid not null references auth.users(id) default auth.uid(),
+  label      text not null,
+  pct        numeric not null check (pct > 0 and pct <= 100),
+  active     boolean not null default true,
+  created_at timestamptz not null default now()
+);
+create index if not exists finance_split_rules_owner_idx on finance_split_rules(owner_id);
+alter table finance_split_rules enable row level security;
+drop policy if exists "owner full access" on finance_split_rules;
+create policy "owner full access" on finance_split_rules for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+-- Investment log: amount, what it went into, date. Standalone — not linked to
+-- invoices and never posts to finance_entries.
+create table if not exists finance_investment_log (
+  id          text primary key,
+  owner_id    uuid not null references auth.users(id) default auth.uid(),
+  amount      numeric not null check (amount > 0),
+  invested_in text not null,
+  date        date not null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists finance_investment_log_owner_idx on finance_investment_log(owner_id, date);
+alter table finance_investment_log enable row level security;
+drop policy if exists "owner full access" on finance_investment_log;
+create policy "owner full access" on finance_investment_log for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());

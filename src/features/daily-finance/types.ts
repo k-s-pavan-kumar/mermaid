@@ -22,7 +22,8 @@ export type FinanceEntrySource =
   | 'bounty_payout'    // a BountyCase reaching status: paid
   | 'reward_vault'     // a Need marked purchased, if that setting is on
   | 'salary'           // a hand-typed pay-day entry — the one other deliberate manual income path (see logSalary)
-  | 'obligation';      // a Due (see FinanceObligation) marked settled — either direction
+  | 'obligation'       // a Due (see FinanceObligation) marked settled — either direction
+  | 'invoice_split';   // a set-aside rule's share of an invoice payment (e.g. the sister's 10%) — see set-aside.ts
 
 export interface FinanceEntry {
   id: string;
@@ -52,6 +53,15 @@ export interface FinanceEntry {
    *  purposes) instead of disappearing into the gap between what was
    *  invoiced/earned and what showed up in the bank. Never set on expenses. */
   tds_amount?: number | null;
+  // Set only on `invoice_split` rows (see set-aside.ts).
+  /** The invoice-payment entry this split was carved out of. */
+  linked_payment_id?: string | null;
+  /** The FinanceSplitRule that produced it. */
+  linked_split_rule_id?: string | null;
+  /** The rule's percentage AT THE TIME it posted — kept so editing a rule
+   *  later never rewrites history, while a TDS correction on the invoice can
+   *  still recompute this row's amount. */
+  split_pct?: number | null;
 }
 
 export const EXPENSE_CATEGORIES = [
@@ -205,4 +215,55 @@ export interface MonthTotals {
   income: number;
   expense: number;
   net: number;
+}
+
+
+// ---------------------------------------------------------------------------
+// Set-asides (e.g. 10% of every invoice payment to a sister)
+//
+// Like every other income-driven row in this app, the resulting ledger entry
+// is derived, not typed: set-aside.ts posts it from the payment itself.
+// ---------------------------------------------------------------------------
+
+export interface FinanceSplitRule {
+  id: string;
+  owner_id: string;
+  /** Who it's for: "Sister", "Mom". */
+  label: string;
+  /** 0 < pct ≤ 100, of the cash received on each invoice payment (net of TDS). */
+  pct: number;
+  /** Soft on/off — a paused rule posts nothing for new payments but keeps its history. */
+  active: boolean;
+  created_at: string;
+}
+
+export const FAMILY_CATEGORY_PREFIX = 'Family';
+
+/** The ledger category a rule's entries are filed under. */
+export function splitCategory(rule: Pick<FinanceSplitRule, 'label'>): string {
+  return `${FAMILY_CATEGORY_PREFIX} — ${rule.label}`;
+}
+
+export interface SetAsideSummary {
+  /** Given away via set-aside rules. */
+  family: number;
+  /** family amount per recipient label, largest first. */
+  byRecipient: { label: string; amount: number }[];
+}
+
+// ---------------------------------------------------------------------------
+// Investment log — a plain list the person fills in by hand: how much, into
+// what, on which date. Deliberately standalone: it is NOT linked to invoices
+// and posts nothing to the ledger, so it never changes income/expense totals.
+// ---------------------------------------------------------------------------
+
+export interface InvestmentLogEntry {
+  id: string;
+  owner_id: string;
+  amount: number;
+  /** Free text: "Nifty 50 index fund", "Gold", "FD – SBI". */
+  invested_in: string;
+  /** 'YYYY-MM-DD' */
+  date: string;
+  created_at: string;
 }

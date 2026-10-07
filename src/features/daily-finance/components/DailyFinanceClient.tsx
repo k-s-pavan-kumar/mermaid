@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import type { DayGroup, FinanceCategoryRule, ObligationView } from '../types';
+import type { DayGroup, FinanceCategoryRule, ObligationView, FinanceSplitRule, SetAsideSummary } from '../types';
 import type { MonthRow } from '../queries';
 import { EXPENSE_CATEGORIES, matchCategoryForLabel } from '../types';
 import {
@@ -13,6 +13,7 @@ import {
 import { ActionButton } from '@/components/ActionButton';
 import { SubmitButton } from '@/components/SubmitButton';
 import { IncomeStreamsPanel } from './IncomeStreamsPanel';
+import { SplitsPanel } from './SplitsPanel';
 import type { IncomeStream, StreamsOverview } from '../streams';
 
 function fmt(n: number, ccy = 'INR') {
@@ -34,6 +35,7 @@ const SOURCE_LABEL: Record<string, string> = {
   reward_vault: 'Reward Vault',
   salary: 'Salary',
   obligation: 'Due',
+  invoice_split: 'Invoice set-aside',
 };
 
 export function DailyFinanceClient({
@@ -41,6 +43,7 @@ export function DailyFinanceClient({
   yearLabel, yearTotals, monthRows, currency,
   customCategories, categoryRules, obligations, tdsYtd,
   streamsOverview, incomeStreams, incomeCategories,
+  splitRules, setAsideMonth, setAsideYear,
 }: {
   monthLabel: string;
   days: DayGroup[];
@@ -58,6 +61,9 @@ export function DailyFinanceClient({
   streamsOverview: StreamsOverview;
   incomeStreams: IncomeStream[];
   incomeCategories: string[];
+  splitRules: FinanceSplitRule[];
+  setAsideMonth: SetAsideSummary;
+  setAsideYear: SetAsideSummary;
 }) {
   const [view, setView] = useState<'month' | 'year'>('month');
   const [modalOpen, setModalOpen] = useState(false);
@@ -127,7 +133,7 @@ export function DailyFinanceClient({
                       <span className={`df-amt ${e.type === 'income' ? 'pos' : 'neg'}`}>
                         {e.type === 'income' ? '+' : '−'}{money(e.amount)}
                       </span>
-                      {['manual', 'reward_vault', 'salary', 'obligation'].includes(e.source) && (
+                      {['manual', 'reward_vault', 'salary', 'obligation', 'invoice_split'].includes(e.source) && (
                         <ActionButton className="df-del" title="Delete" action={() => deleteFinanceEntry(e.id)}>×</ActionButton>
                       )}
                     </div>
@@ -137,6 +143,7 @@ export function DailyFinanceClient({
             </div>
 
             <div className="df-charts">
+              <SplitsPanel rules={splitRules} month={setAsideMonth} year={setAsideYear} money={money} />
               <div className="card">
                 <div className="df-panel-head">
                   <span>Dues</span>

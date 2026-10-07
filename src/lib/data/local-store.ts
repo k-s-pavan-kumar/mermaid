@@ -48,6 +48,9 @@ export type LocalDB = {
   journal_entries?: any[];
   // SDK analytics (Release Stats). Rollups only — raw events are never stored.
   income_streams?: any[];
+  // Daily Finance set-asides (sister %) and the hand-kept investment log.
+  finance_split_rules?: any[];
+  finance_investment_log?: any[];
   analytics_daily?: any[];
   analytics_users?: any[];
 };

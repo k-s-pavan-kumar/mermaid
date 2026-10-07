@@ -97,6 +97,7 @@ export async function markRetainerReceived(clientId: string, period: string, for
     source: 'invoice_payment',
     linkedProjectId: null,
     linkedInvoiceId: inv.id,
+    invoiceNumber: inv.number,
   });
 
   revalidatePath(`/clients/${clientId}`);

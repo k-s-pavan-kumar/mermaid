@@ -10,6 +10,7 @@ import {
   type IncomeStream, type StreamsOverview,
 } from './streams';
 import { SALARY_CATEGORY, categoryForProjectType } from './types';
+import { applySplitsForPayment } from './set-aside';
 
 
 async function entriesFor(ownerId: string, from: string, to: string): Promise<FinanceEntry[]> {
@@ -138,6 +139,8 @@ export async function insertIncomeEntry(input: {
   linkedInvoiceId?: string | null;
   linkedBountyId?: string | null;
   tdsAmount?: number | null;
+  /** Shown in the note of any set-aside this payment triggers. */
+  invoiceNumber?: string | null;
 }): Promise<void> {
   const existing = await table<FinanceEntry>('finance_entries').where(
     (e) =>
@@ -147,7 +150,7 @@ export async function insertIncomeEntry(input: {
   );
   if (existing.length > 0) return;
 
-  await table<FinanceEntry>('finance_entries').insert({
+  const inserted = await table<FinanceEntry>('finance_entries').insert({
     id: newEntryId(),
     owner_id: input.ownerId,
     date: input.date,
@@ -162,6 +165,10 @@ export async function insertIncomeEntry(input: {
     linked_bounty_id: input.linkedBountyId ?? null,
     tds_amount: input.tdsAmount ?? null,
   });
+
+  // Invoice money (e.g. a monthly retainer) triggers the same set-asides as
+  // a payment recorded from the invoice page. Bounties are not invoices.
+  if (input.source === 'invoice_payment') await applySplitsForPayment(input.ownerId, inserted, input.invoiceNumber ?? null);
 }
 
 // ---------------------------------------------------------------------------

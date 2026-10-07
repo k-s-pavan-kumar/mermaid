@@ -6,6 +6,8 @@ import {
   getCustomCategories, getCategoryRules, getObligationsOverview, getTdsSummary,
   getStreamsOverview, getIncomeStreams,
 } from '@/features/daily-finance/queries';
+import { getSplitRules, getSetAsideSummary } from '@/features/daily-finance/set-aside';
+import { monthEndOf } from '@/features/daily-finance/queries';
 import { DailyFinanceClient } from '@/features/daily-finance/components/DailyFinanceClient';
 import { Shell } from '@/components/Shell';
 import { todayIso } from '@/lib/tz/today';
@@ -23,6 +25,7 @@ export default async function DailyFinancePage() {
     { days, totals }, categoryBreakdown, dailyNet, { totals: yearTotals, months },
     customCategories, categoryRules, obligations, tdsYtd,
     { overview: streamsOverview, incomeCategories }, incomeStreams,
+    splitRules, setAsideMonth, setAsideYear,
   ] = await Promise.all([
     getMonthLedger(email, monthStart),
     getCategoryBreakdown(email, monthStart),
@@ -34,6 +37,9 @@ export default async function DailyFinancePage() {
     getTdsSummary(email, year),
     getStreamsOverview(email, year, today),
     getIncomeStreams(email),
+    getSplitRules(email),
+    getSetAsideSummary(email, monthStart, monthEndOf(monthStart)),
+    getSetAsideSummary(email, `${year}-01-01`, `${year}-12-31`),
   ]);
 
   const monthLabel = new Date(monthStart + 'T00:00:00Z').toLocaleDateString('en-GB', { month: 'long', year: 'numeric', timeZone: 'UTC' });
@@ -61,6 +67,9 @@ export default async function DailyFinancePage() {
         streamsOverview={streamsOverview}
         incomeStreams={incomeStreams}
         incomeCategories={incomeCategories}
+        splitRules={splitRules}
+        setAsideMonth={setAsideMonth}
+        setAsideYear={setAsideYear}
       />
     </Shell>
   );

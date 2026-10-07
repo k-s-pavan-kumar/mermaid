@@ -8,6 +8,7 @@ import { getSettings } from '@/features/settings/queries';
 import { todayIso } from '@/lib/tz/today';
 import { balanceDue, grandTotal, subtotal, type IncomeStream, type Invoice, type LineItem, type Quote } from './types';
 import { categoryForProjectType, type FinanceEntry } from '@/features/daily-finance/types';
+import { applySplitsForPayment, removeSplitsForPayment, resyncSplitsForPayment } from '@/features/daily-finance/set-aside';
 import type { Project } from '@/features/projects/types';
 import type { Client } from '@/features/clients/types';
 import { newId } from '@/lib/id';
@@ -216,7 +217,7 @@ async function applyInvoicePayment(
     projectName = client?.name ?? null;
   }
 
-  await table<FinanceEntry>('finance_entries').insert({
+  const payment = await table<FinanceEntry>('finance_entries').insert({
     id: newId(),
     owner_id: owner,
     date,
@@ -230,6 +231,9 @@ async function applyInvoicePayment(
     linked_invoice_id: inv.id,
     tds_amount: null,
   });
+
+  // Sister / investment set-asides: carved out of this payment's cash.
+  await applySplitsForPayment(owner, payment, inv.number);
 
   const paid = await paidSoFar(owner, inv.id);
   const remaining = balanceDue(inv, paid);
@@ -294,6 +298,7 @@ export async function deleteInvoicePayment(paymentId: string): Promise<void> {
 
   const invoiceId = entry.linked_invoice_id;
   await table<FinanceEntry>('finance_entries').remove(paymentId);
+  await removeSplitsForPayment(owner, paymentId);
 
   const inv = await table<Invoice>('invoices').find(invoiceId);
   if (inv) {
@@ -335,10 +340,13 @@ export async function setInvoiceTds(invoiceId: string, tdsAmount: number): Promi
     // The common case, unchanged from before partial payments existed: one
     // payment covers the whole invoice, so keep its recorded amount net of
     // TDS in sync as the TDS figure is corrected.
+    const netAmount = Math.max(0, grandTotal(inv) - clean);
     await table<FinanceEntry>('finance_entries').update(onlyEntry.id, {
-      amount: Math.max(0, grandTotal(inv) - clean),
+      amount: netAmount,
       tds_amount: clean > 0 ? clean : null,
     });
+    // Set-asides are a % of what actually arrived, so follow the correction.
+    await resyncSplitsForPayment(owner, { ...onlyEntry, amount: netAmount });
   } else if (entries.length > 0) {
     // Several payments on file — each already records the real cash that
     // came in, so leave them alone and just re-derive the status/paid_at
