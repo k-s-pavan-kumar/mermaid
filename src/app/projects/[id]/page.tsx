@@ -39,6 +39,9 @@ import { projectTime, fmtHours } from '@/features/projects/time';
 import { table } from '@/lib/data';
 import type { FocusSession } from '@/features/today/types';
 import { fmtRange } from '@/features/today/time';
+import { groupTasksByMonth } from '@/features/today/month-groups';
+import { TaskScheduleFields } from '@/features/today/components/TaskScheduleFields';
+import { todayIso } from '@/lib/tz/today';
 
 const inr = (n: number) => '₹' + n.toLocaleString('en-IN');
 const TAB_LABEL: Record<string, string> = {
@@ -181,48 +184,70 @@ export default async function ProjectDetailPage({
           {tasks.length === 0 ? (
             <div className="card"><div className="empty"><div className="big">No tasks yet</div>Add one below — it'll show up on Today too.</div></div>
           ) : (
-            <div className="card" style={{ padding: '4px 18px' }}>
-              {tasks.map((t) => (
-                <div key={t.id} className="list-row">
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                    <ActionButton
-                      action={async () => { 'use server'; await toggleTaskDone(t.id, !t.done); }}
-                      className={`check-btn${t.done ? ' checked' : ''}`}
-                      aria-label={t.done ? 'Mark not done' : 'Mark done'}
-                    >
-                      <span className="sr-only">{t.done ? 'Done' : 'Not done'}</span>
-                    </ActionButton>
-                    <span style={{ textDecoration: t.done ? 'line-through' : 'none', color: t.done ? 'var(--muted)' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {t.title}
-                    </span>
-                  </span>
-                  <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                    <form
-                      action={async (fd: FormData) => { 'use server'; await setTaskLoggedHours(t.id, fd); }}
-                      style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-                      title="Hours actually worked on this task"
-                    >
-                      <input name="hours" type="number" min={0} max={2000} step="0.25"
-                        defaultValue={Math.round(((t.logged_minutes ?? 0) / 60) * 100) / 100}
-                        aria-label={`Hours worked on ${t.title}`} style={{ width: 64, padding: '4px 6px', fontSize: 12 }} />
-                      <span className="text-muted" style={{ fontSize: 11 }}>h</span>
-                      <SubmitButton className="btn-link" pendingLabel="…">Save</SubmitButton>
-                    </form>
-                    <span className="text-muted" style={{ fontSize: 11.5 }}>
-                      {t.scheduled_date ? `${t.scheduled_date} · ${fmtRange(t)}` : 'Unscheduled'}
-                    </span>
-                  </span>
-                </div>
-              ))}
+            <div>
+              {groupTasksByMonth(tasks).map((g) => {
+                const nowMonth = todayIso().slice(0, 7);
+                const open = g.key === nowMonth || g.key === 'unscheduled' || g.done < g.tasks.length;
+                const h = (m: number) => `${Math.round((m / 60) * 100) / 100}h`;
+                return (
+                  <details key={g.key} open={open} style={{ marginBottom: 14 }}>
+                    <summary style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, cursor: 'pointer', padding: '6px 2px', listStyle: 'none' }}>
+                      <strong style={{ fontFamily: "'Fraunces',serif", fontSize: 16 }}>{g.label}</strong>
+                      <span className="text-muted" style={{ fontSize: 12 }}>
+                        {g.tasks.length} task{g.tasks.length === 1 ? '' : 's'} · {g.done} done
+                        {g.plannedMinutes > 0 && <> · {h(g.workedMinutes)} worked / {h(g.plannedMinutes)} planned</>}
+                      </span>
+                    </summary>
+                    <div className="card" style={{ padding: '4px 18px' }}>
+                      {g.tasks.map((t) => (
+                    <div key={t.id} className="list-row">
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                        <ActionButton
+                          action={async () => { 'use server'; await toggleTaskDone(t.id, !t.done); }}
+                          className={`check-btn${t.done ? ' checked' : ''}`}
+                          aria-label={t.done ? 'Mark not done' : 'Mark done'}
+                        >
+                          <span className="sr-only">{t.done ? 'Done' : 'Not done'}</span>
+                        </ActionButton>
+                        <span style={{ textDecoration: t.done ? 'line-through' : 'none', color: t.done ? 'var(--muted)' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {t.title}
+                        </span>
+                      </span>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                        <form
+                          action={async (fd: FormData) => { 'use server'; await setTaskLoggedHours(t.id, fd); }}
+                          style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                          title="Hours actually worked on this task"
+                        >
+                          <input name="hours" type="number" min={0} max={2000} step="0.25"
+                            defaultValue={Math.round(((t.logged_minutes ?? 0) / 60) * 100) / 100}
+                            aria-label={`Hours worked on ${t.title}`} style={{ width: 64, padding: '4px 6px', fontSize: 12 }} />
+                          <span className="text-muted" style={{ fontSize: 11 }}>h</span>
+                          <SubmitButton className="btn-link" pendingLabel="…">Save</SubmitButton>
+                        </form>
+                        <span className="text-muted" style={{ fontSize: 11.5 }}>
+                          {t.scheduled_date ? `${t.scheduled_date} · ${fmtRange(t)}` : 'Unscheduled'}
+                        </span>
+                      </span>
+                    </div>
+
+                      ))}
+                    </div>
+                  </details>
+                );
+              })}
             </div>
           )}
           <div className="section-title"><h3>Add a task</h3></div>
-          <form action={boundAddProjectTask} className="form-row">
-            <input name="title" placeholder="What needs doing?" required />
-            <SubmitButton className="btn-inline" pendingLabel="Adding…">Add</SubmitButton>
+          <form action={boundAddProjectTask}>
+            <div className="form-row">
+              <input name="title" placeholder="What needs doing?" required />
+              <SubmitButton className="btn-inline" pendingLabel="Adding…">Add</SubmitButton>
+            </div>
+            <TaskScheduleFields today={todayIso()} />
           </form>
           <p className="text-muted text-sm">
-            Enter the hours you actually worked next to each task — the rate boxes above are invoiced/collected
+            Pick a date with From/To and the task lands on that day's calendar with its hours worked out; tick Repeat to fill many days at once. Ticking a scheduled task done credits its planned hours automatically, or enter the hours you actually worked next to each task — the rate boxes above are invoiced/collected
             money ÷ these hours (timer sessions on a task are added automatically). Unscheduled tasks show up in Today's brain dump tagged with this project. Scheduling or
             completing them there updates this list too — it's the same record either way.
           </p>
