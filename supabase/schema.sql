@@ -527,9 +527,7 @@ create table finance_entries (
   linked_obligation_id text, -- references finance_obligations(id); no FK since that table is created further below
   -- Tax already deducted at source on this income row (see invoices.tds_amount).
   tds_amount         numeric,
-  -- Set-asides (see migration 015 / daily-finance/set-aside.ts)
-  linked_payment_id    text,
-  linked_split_rule_id text,
+  -- Sister's share (see migration 015 / daily-finance/set-aside.ts)
   split_pct            numeric
 );
 
@@ -921,24 +919,11 @@ drop policy if exists "owner full access" on income_streams;
 create policy "owner full access" on income_streams for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
 -- ---------------------------------------------------------------------------
--- Set-aside rules & investment log (Daily Finance). Mirrors migration 015.
+-- Sister's share & investment log (Daily Finance). Mirrors migration 015.
 -- ---------------------------------------------------------------------------
--- One set-aside per (payment, rule): the idempotency guard in applySplitsForPayment().
+-- At most one sister's share per invoice.
 create unique index if not exists finance_entries_split_once_idx
-  on finance_entries(linked_payment_id, linked_split_rule_id) where source = 'invoice_split';
-
-create table if not exists finance_split_rules (
-  id         text primary key,
-  owner_id   uuid not null references auth.users(id) default auth.uid(),
-  label      text not null,
-  pct        numeric not null check (pct > 0 and pct <= 100),
-  active     boolean not null default true,
-  created_at timestamptz not null default now()
-);
-create index if not exists finance_split_rules_owner_idx on finance_split_rules(owner_id);
-alter table finance_split_rules enable row level security;
-drop policy if exists "owner full access" on finance_split_rules;
-create policy "owner full access" on finance_split_rules for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+  on finance_entries(linked_invoice_id) where source = 'invoice_split';
 
 -- Investment log: amount, what it went into, date. Standalone — not linked to
 -- invoices and never posts to finance_entries.

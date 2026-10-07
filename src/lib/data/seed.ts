@@ -27,7 +27,6 @@ const db: LocalDB = {
   finance_categories: [],
   finance_category_rules: [],
   finance_obligations: [],
-  finance_split_rules: [],
   finance_investment_log: [],
   bounty_cases: [],
   needs: [],

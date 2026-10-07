@@ -1,6 +1,6 @@
 /**
- * Set-asides (sister %) + the plain investment log: the share maths
- * (pure) and the posting/undo rules (run against a throw-away local DB).
+ * Sister's share (added by hand, per invoice — never automatic) + the plain
+ * investment log. Run against a throw-away local DB.
  * Run:  npm run verify:set-aside
  */
 import fs from 'node:fs';
@@ -17,8 +17,7 @@ function eq(got: unknown, want: unknown, label: string) {
 async function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'meridian-setaside-'));
   fs.mkdirSync(path.join(tmp, 'data'));
-  fs.writeFileSync(path.join(tmp, 'data', 'db.local.json'),
-    JSON.stringify({ finance_entries: [], finance_split_rules: [], finance_investment_log: [] }));
+  fs.writeFileSync(path.join(tmp, 'data', 'db.local.json'), JSON.stringify({ finance_entries: [], finance_investment_log: [] }));
   process.chdir(tmp);
   process.env.DATA_PROVIDER = 'local';
 
@@ -26,65 +25,57 @@ async function main() {
   const Q = await import('../src/features/daily-finance/queries');
   const { table } = await import('../src/lib/data');
   type E = import('../src/features/daily-finance/types').FinanceEntry;
-  type Rule = import('../src/features/daily-finance/types').FinanceSplitRule;
   const me = 'me';
   const entries = async () => table<E>('finance_entries').all();
-  const pay = (id: string, amount: number): E => ({
+  const shares = async () => (await entries()).filter((e) => e.source === 'invoice_split');
+  const pay = (id: string, invoiceId: string, amount: number): E => ({
     id, owner_id: me, date: '2026-10-07', type: 'income', category: 'Client payment', amount, note: 'x',
-    source: 'invoice_payment', created_at: '', linked_invoice_id: 'inv1',
+    source: 'invoice_payment', created_at: '', linked_invoice_id: invoiceId,
   });
-  const rule = (id: string, pct: number): Rule => ({ id, owner_id: me, label: id, pct, active: true, created_at: '' });
+  const give = (invoiceId: string, pct: number, received: number) =>
+    S.setInvoiceShare({ ownerId: me, invoiceId, invoiceNumber: `INV-${invoiceId}`, pct, received, today: '2026-10-08' });
 
-  // ---- pure maths
+  // ---- maths
   eq(S.splitShare(100_000, 10), 10_000, '10% of ₹1,00,000 = ₹10,000');
   eq(S.splitShare(33_333.33, 10), 3_333.33, 'rounds to the paisa');
-  eq(S.planSplits(1000, [rule('a', 10), { ...rule('b', 5), active: false }]).map((p) => p.amount), [100], 'paused rules take nothing');
-  const third = S.planSplits(100, [rule('a', 33.333), rule('b', 33.333), rule('c', 33.334)]);
-  eq(third.reduce((n, p) => n + p.amount, 0) <= 100, true, 'rounding can never over-allocate the payment');
 
-  // ---- rule validation
-  const sister = await S.saveSplitRule({ ownerId: me, label: 'Sister', pct: 10 });
-  eq(sister.ok, true, 'sister 10% rule saved');
-  eq((await S.saveSplitRule({ ownerId: me, label: 'X', pct: 0 })).ok, false, '0% rejected');
-  eq((await S.saveSplitRule({ ownerId: me, label: '', pct: 5 })).ok, false, 'a rule needs a name');
-  eq((await S.saveSplitRule({ ownerId: me, label: 'Big', pct: 95 })).ok, false, 'rules totalling over 100% rejected');
+  // ---- nothing is automatic
+  await table<E>('finance_entries').insert(pay('p1', 'a', 80_000));
+  await Q.insertIncomeEntry({ ownerId: me, date: '2026-10-08', category: 'Client payment', amount: 50_000, note: 'retainer', source: 'invoice_payment', linkedInvoiceId: 'ret' });
+  eq((await shares()).length, 0, 'recording payments (incl. a retainer) gives the sister nothing on its own');
 
-  // ---- posting
-  const p1 = pay('p1', 80_000);
-  await table<E>('finance_entries').insert(p1);
-  eq(await S.applySplitsForPayment(me, p1, 'INV-001'), 1, 'one payment posts one entry per active rule');
-  eq(await S.applySplitsForPayment(me, p1, 'INV-001'), 0, 'idempotent: a retry posts nothing');
-  const posted = (await entries()).filter((e) => e.source === 'invoice_split');
-  eq(posted.map((e) => [e.category, e.amount, e.type]), [['Family — Sister', 8_000, 'expense']], 'sister gets 10% of 80,000 = 8,000, as an expense');
-  eq(posted[0]!.note?.includes('INV-001'), true, 'note names the invoice');
+  // ---- giving a share, by hand, on invoice "a" only
+  eq((await give('a', 0, 80_000)).ok, false, '0% rejected');
+  eq((await give('a', 150, 80_000)).ok, false, 'over 100% rejected');
+  eq((await give('b', 10, 0)).ok, false, 'nothing received yet → nothing to take a share of');
+  eq((await give('a', 10, 80_000)).ok, true, 'give 10% on invoice a');
+  eq((await shares()).map((e) => [e.linked_invoice_id, e.category, e.amount, e.type]), [['a', 'Family — Sister', 8_000, 'expense']], '₹8,000 expense, filed under Family — Sister, on invoice a only');
+  eq((await shares())[0]!.note?.includes('INV-a'), true, 'note names the invoice');
 
-  // ---- a rule added later does not reach back
-  await S.saveSplitRule({ ownerId: me, label: 'Mom', pct: 2 });
-  await S.resyncSplitsForPayment(me, p1);
-  eq((await entries()).filter((e) => e.source === 'invoice_split' && e.linked_payment_id === 'p1').length, 1, 'new rule does not backfill paid invoices');
+  // ---- one per invoice: pressing again changes it rather than doubling it
+  await give('a', 12.5, 80_000);
+  eq((await shares()).map((e) => [e.amount, e.split_pct]), [[10_000, 12.5]], 'giving again re-sets the one share (12.5% → 10,000), no duplicate');
 
-  // ---- TDS correction: shares follow the net amount, at the % they were posted at
-  await S.saveSplitRule({ ownerId: me, id: sister.ok ? sister.id : '', label: 'Sister', pct: 12 });
-  await S.resyncSplitsForPayment(me, { ...p1, amount: 72_000 });
-  const after = (await entries()).filter((e) => e.source === 'invoice_split' && e.linked_payment_id === 'p1');
-  eq(after.map((e) => [e.category, e.amount]), [['Family — Sister', 7_200]], 'TDS fix → 10% of 72,000; later edit of the rule to 12% does not rewrite history');
+  // ---- follows the invoice when what was received changes
+  await S.resyncInvoiceShare(me, 'a', 72_000); // TDS correction / extra payment / deleted payment
+  eq((await shares())[0]!.amount, 9_000, 'received changes to 72,000 → share follows (12.5% = 9,000)');
+  await S.resyncInvoiceShare(me, 'ret', 50_000);
+  eq((await shares()).length, 1, 'resync never creates a share on an invoice the person skipped');
+  await S.resyncInvoiceShare(me, 'a', 0);
+  eq((await shares()).length, 0, 'all payments deleted → the share goes too');
 
-  // ---- retainer path (insertIncomeEntry) posts splits too, and only once
-  await Q.insertIncomeEntry({ ownerId: me, date: '2026-10-08', category: 'Client payment', amount: 50_000, note: 'retainer', source: 'invoice_payment', linkedInvoiceId: 'inv2', invoiceNumber: 'INV-002' });
-  await Q.insertIncomeEntry({ ownerId: me, date: '2026-10-08', category: 'Client payment', amount: 50_000, note: 'retainer', source: 'invoice_payment', linkedInvoiceId: 'inv2', invoiceNumber: 'INV-002' });
-  const rp = (await entries()).filter((e) => e.source === 'invoice_split' && e.linked_invoice_id === 'inv2');
-  eq(rp.reduce((n, e) => n + e.amount, 0), 6_000 + 1_000, 'new payment uses the edited rate: sister 12% + mom 2%, posted once despite a duplicate call');
-  const bounty = await Q.insertIncomeEntry({ ownerId: me, date: '2026-10-09', category: 'Bug bounty', amount: 10_000, note: 'b', source: 'bounty_payout', linkedBountyId: 'b1' });
-  eq((await entries()).filter((e) => e.linked_bounty_id === 'b1' || e.note === 'b').length, 1, 'bounties are not invoices → no set-aside');
+  // ---- remove by hand
+  await give('a', 10, 80_000);
+  eq(await S.removeInvoiceShare(me, 'a'), true, 'remove the share');
+  eq((await shares()).length, 0, 'gone from the ledger');
+  eq(await S.removeInvoiceShare(me, 'a'), false, 'removing again is a no-op');
 
-  // ---- deleting a payment takes its shares with it
-  await S.removeSplitsForPayment(me, 'p1');
-  eq((await entries()).filter((e) => e.linked_payment_id === 'p1').length, 0, 'deleting the payment removes its set-asides');
-
-  // ---- summary for the ledger page
-  const sum = await S.getSetAsideSummary(me, '2026-10-01', '2026-10-31');
-  eq(sum.family, 6_000 + 1_000, 'month summary: total given');
-  eq(sum.byRecipient.map((r) => r.label), ['Sister', 'Mom'], 'recipients, largest first');
+  // ---- totals for the finance page
+  await give('a', 10, 80_000);
+  await table<E>('finance_entries').insert(pay('p2', 'c', 20_000));
+  await give('c', 10, 20_000);
+  eq(await S.getSisterTotal(me, '2026-10-01', '2026-10-31'), 10_000, 'month total given = 8,000 + 2,000');
+  eq(await S.getSisterTotal(me, '2026-11-01', '2026-11-30'), 0, 'other months are 0');
 
   // ---- investment log: plain, standalone, never touches the ledger
   const ledgerBefore = (await entries()).length;

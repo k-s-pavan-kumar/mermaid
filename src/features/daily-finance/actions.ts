@@ -6,10 +6,7 @@ import { getSessionEmail } from '@/lib/auth/session';
 import type { FinanceEntry, FinanceCategory, FinanceCategoryRule, FinanceObligation } from './types';
 import { EXPENSE_CATEGORIES, SALARY_CATEGORY } from './types';
 import { insertIncomeEntry, insertRewardVaultExpense, saveIncomeStream, removeIncomeStream, seedStreamsFromCategories } from './queries';
-import {
-  saveSplitRule as saveSplitRuleDb, setSplitRuleActive, removeSplitRule,
-  addInvestmentLogEntry, removeInvestmentLogEntry,
-} from './set-aside';
+import { addInvestmentLogEntry, removeInvestmentLogEntry } from './set-aside';
 import { newId } from '@/lib/id';
 import { todayIso } from '@/lib/tz/today';
 
@@ -274,7 +271,7 @@ export async function deleteFinanceEntry(id: string): Promise<void> {
   const owner = await requireOwner();
   const row = await table<FinanceEntry>('finance_entries').find(id);
   // Manual expenses, reward_vault-sourced expenses, salary entries, and
-  // obligation settlements and set-aside shares can
+  // obligation settlements and the sister's share can
   // all be deleted directly by the user (a
   // mis-recorded figure is a normal correction, and re-settling a due after
   // deleting a mistaken entry is exactly the intended flow). Anything else
@@ -306,7 +303,6 @@ export async function postIncomeEntry(input: {
   linkedInvoiceId?: string | null;
   linkedBountyId?: string | null;
   tdsAmount?: number | null;
-  invoiceNumber?: string | null;
 }): Promise<void> {
   await insertIncomeEntry(input);
   revalidatePath('/daily-finance');
@@ -372,41 +368,6 @@ export async function createStreamsFromIncome(year: number): Promise<StreamActio
     : { ok: false, message: 'No income categories to turn into streams yet' };
 }
 
-
-// ---------------------------------------------------------------------------
-// Set-aside rules (e.g. the sister's 10%). They only decide how a real invoice
-// payment is carved up — see set-aside.ts.
-// ---------------------------------------------------------------------------
-function refreshFinance() {
-  revalidatePath('/daily-finance');
-  revalidatePath('/daily-finance/investments');
-  revalidatePath('/dashboard');
-}
-
-export async function saveSplitRule(formData: FormData): Promise<StreamActionResult> {
-  const owner = await requireOwner();
-  const res = await saveSplitRuleDb({
-    ownerId: owner,
-    id: String(formData.get('id') ?? '') || null,
-    label: String(formData.get('label') ?? ''),
-    pct: Number(formData.get('pct')),
-  });
-  if (!res.ok) return { ok: false, message: res.error };
-  refreshFinance();
-  return { ok: true, message: 'Rule saved — applies to the next invoice payment you record' };
-}
-
-export async function toggleSplitRule(id: string, active: boolean): Promise<StreamActionResult> {
-  const owner = await requireOwner();
-  const res = await setSplitRuleActive(owner, id, active);
-  if (res.ok) refreshFinance();
-  return { ok: res.ok, message: res.error ?? '' };
-}
-
-export async function deleteSplitRule(id: string): Promise<void> {
-  const owner = await requireOwner();
-  if (await removeSplitRule(owner, id)) refreshFinance();
-}
 
 // ---------------------------------------------------------------------------
 // Investment log — plain hand-kept list, separate from the ledger.

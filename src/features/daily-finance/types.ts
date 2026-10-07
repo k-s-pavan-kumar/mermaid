@@ -23,7 +23,7 @@ export type FinanceEntrySource =
   | 'reward_vault'     // a Need marked purchased, if that setting is on
   | 'salary'           // a hand-typed pay-day entry — the one other deliberate manual income path (see logSalary)
   | 'obligation'       // a Due (see FinanceObligation) marked settled — either direction
-  | 'invoice_split';   // a set-aside rule's share of an invoice payment (e.g. the sister's 10%) — see set-aside.ts
+  | 'invoice_split';   // the sister's share of an invoice, added by hand from that invoice's page — see set-aside.ts
 
 export interface FinanceEntry {
   id: string;
@@ -54,13 +54,8 @@ export interface FinanceEntry {
    *  invoiced/earned and what showed up in the bank. Never set on expenses. */
   tds_amount?: number | null;
   // Set only on `invoice_split` rows (see set-aside.ts).
-  /** The invoice-payment entry this split was carved out of. */
-  linked_payment_id?: string | null;
-  /** The FinanceSplitRule that produced it. */
-  linked_split_rule_id?: string | null;
-  /** The rule's percentage AT THE TIME it posted — kept so editing a rule
-   *  later never rewrites history, while a TDS correction on the invoice can
-   *  still recompute this row's amount. */
+  /** The % of what was received on the invoice that this share is — kept so
+   *  a later payment / TDS correction on that invoice can recompute the amount. */
   split_pct?: number | null;
 }
 
@@ -219,37 +214,16 @@ export interface MonthTotals {
 
 
 // ---------------------------------------------------------------------------
-// Set-asides (e.g. 10% of every invoice payment to a sister)
+// Sister's share
 //
-// Like every other income-driven row in this app, the resulting ledger entry
-// is derived, not typed: set-aside.ts posts it from the payment itself.
+// NOT automatic. On an invoice's own page the person chooses to give their
+// sister a % (default 10) of what was received on THAT invoice; recurring
+// invoices are simply never given one. It posts one expense entry per
+// invoice — see set-aside.ts.
 // ---------------------------------------------------------------------------
 
-export interface FinanceSplitRule {
-  id: string;
-  owner_id: string;
-  /** Who it's for: "Sister", "Mom". */
-  label: string;
-  /** 0 < pct ≤ 100, of the cash received on each invoice payment (net of TDS). */
-  pct: number;
-  /** Soft on/off — a paused rule posts nothing for new payments but keeps its history. */
-  active: boolean;
-  created_at: string;
-}
-
-export const FAMILY_CATEGORY_PREFIX = 'Family';
-
-/** The ledger category a rule's entries are filed under. */
-export function splitCategory(rule: Pick<FinanceSplitRule, 'label'>): string {
-  return `${FAMILY_CATEGORY_PREFIX} — ${rule.label}`;
-}
-
-export interface SetAsideSummary {
-  /** Given away via set-aside rules. */
-  family: number;
-  /** family amount per recipient label, largest first. */
-  byRecipient: { label: string; amount: number }[];
-}
+export const SISTER_CATEGORY = 'Family — Sister';
+export const DEFAULT_SISTER_PCT = 10;
 
 // ---------------------------------------------------------------------------
 // Investment log — a plain list the person fills in by hand: how much, into
