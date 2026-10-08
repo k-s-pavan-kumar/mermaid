@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { MAX_OCCURRENCES, WEEKDAY_LABELS, expandDates, isValidIso, parseTimeInput } from '../recurrence';
+import { describeQuickParse, parseQuickAdd } from '../quickadd';
 
 /**
  * Optional scheduling fields for the "Add a task" form: a date, a From/To
@@ -31,6 +32,27 @@ export function TaskScheduleFields({ today }: { today: string }) {
   const [days, setDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [skip, setSkip] = useState<string[]>([]);
   const [skipDraft, setSkipDraft] = useState('');
+  const [due, setDue] = useState('');
+  const [quick, setQuick] = useState('');
+  const [understood, setUnderstood] = useState<{ chips: string[]; notes: string[] } | null>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  /** Read the plain-words box and fill every field (and the title) from it. */
+  function fillFromQuick() {
+    if (!quick.trim()) return;
+    const q = parseQuickAdd(quick, today);
+    setDate(q.date ?? '');
+    setFrom(q.start ?? '');
+    setTo(q.end ?? '');
+    setRepeat(q.repeat);
+    setUntil(q.until ?? '');
+    setDays(q.weekdays.length ? q.weekdays : [1, 2, 3, 4, 5]);
+    setSkip(q.skip);
+    setDue(q.due ?? '');
+    const titleInput = wrapRef.current?.closest('form')?.elements.namedItem('title');
+    if (titleInput instanceof HTMLInputElement) titleInput.value = q.title;
+    setUnderstood({ chips: describeQuickParse(q), notes: q.notes });
+  }
 
   const a = parseTimeInput(from);
   const b = parseTimeInput(to);
@@ -56,7 +78,29 @@ export function TaskScheduleFields({ today }: { today: string }) {
   });
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '10px 0 14px' }}>
+    <div ref={wrapRef} style={{ display: 'flex', flexDirection: 'column', gap: 12, margin: '10px 0 14px' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            value={quick}
+            onChange={(e) => setQuick(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); fillFromQuick(); } }}
+            placeholder='Lazy mode — type it: "UI UX class 9-10 every weekday till 31 oct skip 20 oct"'
+            aria-label="Type the task in plain words"
+            style={{ flex: 1 }}
+          />
+          <button type="button" className="btn-ghost" onClick={fillFromQuick} disabled={!quick.trim()}>Fill form</button>
+        </div>
+        {understood && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center', fontSize: 12 }}>
+            <span className="text-muted">Understood:</span>
+            {understood.chips.length === 0 && <span className="text-muted">just a task, no date</span>}
+            {understood.chips.map((c) => <span key={c} style={chip(true)}>{c}</span>)}
+            {understood.notes.map((n) => <span key={n} style={{ color: '#c0392b' }}>⚠ {n}</span>)}
+            <span className="text-muted">— check below, then Add.</span>
+          </div>
+        )}
+      </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
         <label style={fieldCol}>Date
           <input name="date" type="date" value={date} min={today} onChange={(e) => setDate(e.target.value)} />
@@ -66,6 +110,9 @@ export function TaskScheduleFields({ today }: { today: string }) {
         </label>
         <label style={fieldCol}>To
           <input name="end_time" type="time" step={1800} value={to} onChange={(e) => setTo(e.target.value)} required={!!date} />
+        </label>
+        <label style={fieldCol}>Deadline (optional)
+          <input name="due_date" type="date" value={repeat ? '' : due} disabled={repeat} min={today} onChange={(e) => setDue(e.target.value)} />
         </label>
         <span className="text-muted" style={{ fontSize: 12.5, paddingBottom: 8 }}>
           {minutes ? <>= <strong style={{ color: 'inherit' }}>{fmtH(minutes)}</strong> per day</> : badRange ? 'End time must be after start' : 'Pick a date and From/To to put it on the calendar'}

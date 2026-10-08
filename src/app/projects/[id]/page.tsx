@@ -34,7 +34,8 @@ import { ProjectTypePicker } from '@/features/projects/components/ProjectTypePic
 import { getClients } from '@/features/clients/queries';
 import { TYPE_COLOR, TYPE_LABEL, projectTypes, hasType } from '@/lib/project-colors';
 import { getTasksForProject } from '@/features/today/queries';
-import { addProjectTask, toggleTaskDone, setTaskLoggedHours } from '@/features/today/actions';
+import { addProjectTask, toggleTaskDone, setTaskLoggedHours, setTaskDue } from '@/features/today/actions';
+import { DueBadge } from '@/features/today/components/DueBadge';
 import { projectTime, fmtHours } from '@/features/projects/time';
 import { table } from '@/lib/data';
 import type { FocusSession } from '@/features/today/types';
@@ -212,8 +213,20 @@ export default async function ProjectDetailPage({
                         <span style={{ textDecoration: t.done ? 'line-through' : 'none', color: t.done ? 'var(--muted)' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {t.title}
                         </span>
+                        {t.due_date && !t.done && <DueBadge due={t.due_date} today={todayIso()} />}
                       </span>
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                        {!t.done && (
+                          <form
+                            action={async (fd: FormData) => { 'use server'; await setTaskDue(t.id, fd); }}
+                            style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                            title="Deadline — clear the date and Save to remove it"
+                          >
+                            <input name="due_date" type="date" defaultValue={t.due_date ?? ''}
+                              aria-label={`Deadline for ${t.title}`} style={{ padding: '3px 5px', fontSize: 11.5 }} />
+                            <SubmitButton className="btn-link" pendingLabel="…">Due</SubmitButton>
+                          </form>
+                        )}
                         <form
                           action={async (fd: FormData) => { 'use server'; await setTaskLoggedHours(t.id, fd); }}
                           style={{ display: 'flex', alignItems: 'center', gap: 4 }}

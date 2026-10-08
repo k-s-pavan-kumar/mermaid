@@ -42,6 +42,10 @@ export interface Task {
    * yesterday's choice doesn't silently become today's.
    */
   focus_date?: string | null;
+  /** Deadline (date only). Drives the urgency badge, the Due-soon card and alerts. */
+  due_date?: string | null;
+  /** Set on every task created by one Repeat, so a missed daily class is not auto-rolled forward onto today. */
+  series_id?: string | null;
   created_at: string;
 }
 

@@ -111,6 +111,24 @@ export async function getSisterTotal(ownerId: string, from: string, to: string):
   return r2(rows.reduce((n, e) => n + e.amount, 0));
 }
 
+/** Every share given to the sister between two dates, newest first. */
+export async function getSisterEntries(ownerId: string, from: string, to: string): Promise<FinanceEntry[]> {
+  const rows = await table<FinanceEntry>('finance_entries').where(
+    (e) => e.owner_id === ownerId && e.source === 'invoice_split' && e.date >= from && e.date <= to
+  );
+  return [...rows].sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : b.created_at.localeCompare(a.created_at)));
+}
+
+/** Twelve month buckets (Jan..Dec) for one year: how much was given and how many shares. */
+export async function getSisterMonthly(ownerId: string, year: number): Promise<{ month: string; amount: number; count: number }[]> {
+  const rows = await getSisterEntries(ownerId, `${year}-01-01`, `${year}-12-31`);
+  return Array.from({ length: 12 }, (_, i) => {
+    const month = `${year}-${String(i + 1).padStart(2, '0')}`;
+    const inMonth = rows.filter((e) => e.date.slice(0, 7) === month);
+    return { month, amount: r2(inMonth.reduce((n, e) => n + e.amount, 0)), count: inMonth.length };
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Investment log — plain, hand-kept, standalone.
 // ---------------------------------------------------------------------------

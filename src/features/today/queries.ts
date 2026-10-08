@@ -121,3 +121,12 @@ export async function getDayBlocksRange(ownerId: string, startDate: string, endD
   );
   return rows.sort((a, b) => (a.date === b.date ? a.start_minute - b.start_minute : a.date < b.date ? -1 : 1));
 }
+
+/** Open tasks that are overdue or due within two days, most urgent first. */
+export async function getDueSoonTasks(ownerId: string, today: string): Promise<Task[]> {
+  const limit = addDays(today, 2);
+  const tasks = await table<Task>('tasks').where(
+    (t) => t.owner_id === ownerId && !t.done && !!t.due_date && t.due_date! <= limit,
+  );
+  return tasks.sort((a, b) => (a.due_date ?? '').localeCompare(b.due_date ?? ''));
+}

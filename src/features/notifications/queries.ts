@@ -117,7 +117,7 @@ async function deriveAlerts(ownerId: string): Promise<DerivedAlert[]> {
   // 5. Overdue scheduled tasks — never surfaced before now, so a task
   // scheduled three days ago and never finished was invisible unless you
   // happened to click back to that exact day.
-  const overdueTasks = tasks.filter((t) => !t.done && t.scheduled_date && t.scheduled_date < todayDate);
+  const overdueTasks = tasks.filter((t) => !t.done && !t.series_id && t.scheduled_date && t.scheduled_date < todayDate);
   for (const t of overdueTasks) {
     const d = daysBetween(t.scheduled_date!, today);
     alerts.push({
@@ -126,6 +126,22 @@ async function deriveAlerts(ownerId: string): Promise<DerivedAlert[]> {
       title: `"${t.title}" was scheduled ${Math.abs(d)}d ago`,
       detail: t.project_id ? `${projectName(t.project_id)} · still not done` : 'Still not done',
       href: '/today',
+      daysOut: d,
+    });
+  }
+
+  // 5b. Deadlines. A task with a due date turns into an alert the day before
+  // and stays loud until it's done — the last-minute-proof nudge.
+  for (const t of tasks) {
+    if (t.done || !t.due_date) continue;
+    const d = daysBetween(t.due_date, today);
+    if (d > 1) continue;
+    alerts.push({
+      id: `task-due-${t.id}`,
+      level: d <= 0 ? 'critical' : 'warning',
+      title: d < 0 ? `"${t.title}" is ${Math.abs(d)}d past its deadline` : d === 0 ? `"${t.title}" is due today` : `"${t.title}" is due tomorrow`,
+      detail: t.project_id ? projectName(t.project_id) : 'Task',
+      href: t.project_id ? `/projects/${t.project_id}?tab=todo` : '/today',
       daysOut: d,
     });
   }

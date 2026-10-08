@@ -1153,3 +1153,17 @@ button.rs-pkg-icon{border:1px solid transparent;cursor:pointer;font-family:inher
 .mgroup .chev{display:inline-block;transition:transform .15s;color:var(--muted);}
 .mgroup[open] .chev{transform:rotate(90deg);}
 .mgroup[open] summary{border-bottom:1px solid var(--border-light);}
+
+
+/* Daily Finance: toolbar, period navigation, tidier right column */
+.df-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:16px;}
+.df-toolbar .df-toggle{margin-bottom:0;}
+.df-toggle a{font-size:13px;font-weight:500;color:var(--muted);background:none;border:none;padding:6px 15px;border-radius:7px;cursor:pointer;text-decoration:none;display:inline-block;}
+.df-toggle a.active{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(28,18,64,.09);}
+.df-nav{display:flex;align-items:center;gap:6px;}
+.df-nav .arrow{width:30px;height:30px;display:grid;place-items:center;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--ink);text-decoration:none;font-size:18px;line-height:1;}
+.df-nav .arrow.off{opacity:.3;}
+.df-nav .label{font-family:'Fraunces',serif;font-size:17px;min-width:136px;text-align:center;}
+.df-links{display:flex;gap:16px;font-size:12.5px;}
+.df-charts{display:flex;flex-direction:column;gap:16px;}
+.df-hint{font-size:11.5px;color:var(--muted);margin:14px 0 0;}

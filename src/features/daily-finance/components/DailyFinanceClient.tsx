@@ -13,7 +13,6 @@ import {
 import { ActionButton } from '@/components/ActionButton';
 import { SubmitButton } from '@/components/SubmitButton';
 import { IncomeStreamsPanel } from './IncomeStreamsPanel';
-import { SisterCard } from './SisterCard';
 import type { IncomeStream, StreamsOverview } from '../streams';
 
 function fmt(n: number, ccy = 'INR') {
@@ -39,32 +38,35 @@ const SOURCE_LABEL: Record<string, string> = {
 };
 
 export function DailyFinanceClient({
-  monthLabel, days, monthTotals, categoryBreakdown, dailyNet,
-  yearLabel, yearTotals, monthRows, currency,
-  customCategories, categoryRules, obligations, tdsYtd,
-  streamsOverview, incomeStreams, incomeCategories,
-  sisterMonth, sisterYear,
+  view, isCurrentMonth, monthLabel, defaultDate,
+  days = [], monthTotals = { income: 0, expense: 0, net: 0 }, categoryBreakdown = [], dailyNet = [],
+  yearLabel, yearTotals, monthRows = [], currency,
+  customCategories = [], categoryRules = [], obligations = [], tdsYtd = 0,
+  streamsOverview, incomeStreams = [], incomeCategories = [],
 }: {
+  view: 'month' | 'year';
+  isCurrentMonth: boolean;
   monthLabel: string;
-  days: DayGroup[];
-  monthTotals: { income: number; expense: number; net: number };
-  categoryBreakdown: { category: string; amount: number }[];
-  dailyNet: { date: string; net: number }[];
+  /** Pre-filled date for new salary / expense entries: today, or the last day of a past month. */
+  defaultDate: string;
+  // Month view only (the page doesn't load these for the year view)
+  days?: DayGroup[];
+  monthTotals?: { income: number; expense: number; net: number };
+  categoryBreakdown?: { category: string; amount: number }[];
+  dailyNet?: { date: string; net: number }[];
+  customCategories?: string[];
+  categoryRules?: FinanceCategoryRule[];
+  obligations?: ObligationView[];
+  // Year view only
   yearLabel: string;
-  yearTotals: { income: number; expense: number; net: number };
-  monthRows: MonthRow[];
+  yearTotals?: { income: number; expense: number; net: number };
+  monthRows?: MonthRow[];
+  tdsYtd?: number;
+  streamsOverview?: StreamsOverview;
+  incomeStreams?: IncomeStream[];
+  incomeCategories?: string[];
   currency: string;
-  customCategories: string[];
-  categoryRules: FinanceCategoryRule[];
-  obligations: ObligationView[];
-  tdsYtd: number;
-  streamsOverview: StreamsOverview;
-  incomeStreams: IncomeStream[];
-  incomeCategories: string[];
-  sisterMonth: number;
-  sisterYear: number;
 }) {
-  const [view, setView] = useState<'month' | 'year'>('month');
   const [modalOpen, setModalOpen] = useState(false);
   const [salaryModalOpen, setSalaryModalOpen] = useState(false);
   const [dueModalOpen, setDueModalOpen] = useState(false);
@@ -82,14 +84,9 @@ export function DailyFinanceClient({
 
   return (
     <>
-      <div className="df-toggle">
-        <button type="button" className={view === 'month' ? 'active' : ''} onClick={() => setView('month')}>Month</button>
-        <button type="button" className={view === 'year' ? 'active' : ''} onClick={() => setView('year')}>Year</button>
-      </div>
-
       {view === 'month' ? (
         <>
-          <div className="stats" style={{ marginBottom: 20 }}>
+          <div className="stats" style={{ marginBottom: 18 }}>
             <div className="stat"><div className="lbl">Income · {monthLabel}</div><div className="val pos">{money(monthTotals.income)}</div></div>
             <div className="stat"><div className="lbl">Expenses · {monthLabel}</div><div className="val neg">{money(monthTotals.expense)}</div></div>
             <div className="stat"><div className="lbl">Net</div><div className={`val ${monthTotals.net >= 0 ? 'pos' : 'neg'}`}>{money(monthTotals.net)}</div></div>
@@ -107,8 +104,8 @@ export function DailyFinanceClient({
               {days.length === 0 ? (
                 <div className="empty">
                   <img src="/mascot/idle.png" alt="" width={72} height={72} />
-                  <div className="big">Nothing logged yet</div>
-                  Log an expense to start the ledger for this month.
+                  <div className="big">Nothing logged {isCurrentMonth ? 'yet' : `in ${monthLabel}`}</div>
+                  {isCurrentMonth ? 'Log an expense to start the ledger for this month.' : 'Use “+ Add salary” or “+ Add expense” above to fill in this month.'}
                 </div>
               ) : days.map((d) => (
                 <div key={d.date} className="df-day-group">
@@ -142,7 +139,6 @@ export function DailyFinanceClient({
             </div>
 
             <div className="df-charts">
-              <SisterCard month={sisterMonth} year={sisterYear} money={money} />
               <div className="card">
                 <div className="df-panel-head">
                   <span>Dues</span>
@@ -222,11 +218,11 @@ export function DailyFinanceClient({
                 </div>
               </div>
 
-              <div className="card" style={{ marginTop: 16 }}>
+              <div className="card">
                 <div className="df-panel-head"><span>Spending by category</span></div>
                 <div style={{ padding: 16 }}>
                   {categoryBreakdown.length === 0 ? (
-                    <p className="text-muted text-sm" style={{ margin: 0 }}>No expenses yet this month.</p>
+                    <p className="text-muted text-sm" style={{ margin: 0 }}>No expenses in this month.</p>
                   ) : categoryBreakdown.map((c) => (
                     <div key={c.category} className="df-bar-row">
                       <div className="df-bar-top"><span className="name">{c.category}</span><span className="val">{money(c.amount)}</span></div>
@@ -236,7 +232,7 @@ export function DailyFinanceClient({
                 </div>
               </div>
 
-              <div className="card" style={{ marginTop: 16 }}>
+              <div className="card">
                 <div className="df-panel-head"><span>Daily net</span></div>
                 <div style={{ padding: 16 }}>
                   {dailyNet.length === 0 ? (
@@ -255,13 +251,11 @@ export function DailyFinanceClient({
             </div>
           </div>
 
-          <p className="text-muted" style={{ fontSize: 12, marginTop: 16, maxWidth: 700, lineHeight: 1.6 }}>
-            <strong>Income only ever posts from something already earned.</strong> A project invoice or bug bounty
-            being marked paid posts here automatically, and so does every payment you add against a due. Salary is the
-            one thing you type in directly — there&apos;s no other event in the app that would create it.
+          <p className="df-hint">
+            Income posts on its own from paid invoices, bounties and dues you settle — salary is the only income you type in.
           </p>
         </>
-      ) : (
+      ) : yearTotals && streamsOverview ? (
         <>
           <div className="stats" style={{ marginBottom: 20 }}>
             <div className="stat"><div className="lbl">Income · {yearLabel} YTD</div><div className="val pos">{money(yearTotals.income)}</div></div>
@@ -305,17 +299,17 @@ export function DailyFinanceClient({
             </div>
           </div>
         </>
-      )}
+      ) : null}
 
-      {modalOpen && <AddExpenseModal onClose={() => setModalOpen(false)} categories={allCategories} rules={categoryRules} />}
-      {salaryModalOpen && <AddSalaryModal onClose={() => setSalaryModalOpen(false)} />}
+      {modalOpen && <AddExpenseModal onClose={() => setModalOpen(false)} categories={allCategories} rules={categoryRules} defaultDate={defaultDate} />}
+      {salaryModalOpen && <AddSalaryModal onClose={() => setSalaryModalOpen(false)} defaultDate={defaultDate} monthLabel={monthLabel} />}
       {dueModalOpen && <AddObligationModal onClose={() => setDueModalOpen(false)} categories={allCategories} />}
       {settling && <SettleObligationModal view={settling} onClose={() => setSettling(null)} money={money} />}
     </>
   );
 }
 
-function AddExpenseModal({ onClose, categories, rules }: { onClose: () => void; categories: string[]; rules: FinanceCategoryRule[] }) {
+function AddExpenseModal({ onClose, categories, rules, defaultDate }: { onClose: () => void; categories: string[]; rules: FinanceCategoryRule[]; defaultDate: string }) {
   const [category, setCategory] = useState('');
   const [categoryTouched, setCategoryTouched] = useState(false);
   const [note, setNote] = useState('');
@@ -348,7 +342,7 @@ function AddExpenseModal({ onClose, categories, rules }: { onClose: () => void; 
           <div className="grid-2-eq">
             <div>
               <label className="field-label" htmlFor="date">Date</label>
-              <input id="date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} style={{ width: '100%' }} />
+              <input id="date" name="date" type="date" required defaultValue={defaultDate} style={{ width: '100%' }} />
             </div>
             <div>
               <label className="field-label" htmlFor="amount">Amount</label>
@@ -411,7 +405,7 @@ function CategoryRulesManager({ rules, categories }: { rules: FinanceCategoryRul
   );
 }
 
-function AddSalaryModal({ onClose }: { onClose: () => void }) {
+function AddSalaryModal({ onClose, defaultDate, monthLabel }: { onClose: () => void; defaultDate: string; monthLabel: string }) {
   return (
     <div className="modal-overlay show" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div className="modal">
@@ -426,7 +420,7 @@ function AddSalaryModal({ onClose }: { onClose: () => void }) {
           <div className="grid-2-eq">
             <div>
               <label className="field-label" htmlFor="s-date">Date</label>
-              <input id="s-date" name="date" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} style={{ width: '100%' }} />
+              <input id="s-date" name="date" type="date" required defaultValue={defaultDate} style={{ width: '100%' }} />
             </div>
             <div>
               <label className="field-label" htmlFor="s-amount">Amount received</label>
@@ -439,7 +433,7 @@ function AddSalaryModal({ onClose }: { onClose: () => void }) {
           </div>
           <div style={{ marginTop: 12 }}>
             <label className="field-label" htmlFor="s-note">Note</label>
-            <input id="s-note" name="note" type="text" placeholder="e.g. September salary" style={{ width: '100%' }} />
+            <input id="s-note" name="note" type="text" placeholder={`e.g. ${monthLabel.split(' ')[0]} salary`} style={{ width: '100%' }} />
           </div>
           <div className="modal-foot">
             <button type="button" className="btn-ghost" onClick={onClose}>Cancel</button>

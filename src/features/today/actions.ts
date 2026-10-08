@@ -30,6 +30,7 @@ export async function addTask(formData: FormData): Promise<void> {
   if (!title) return;
 
   const project_id = String(formData.get('project_id') ?? '').trim() || null;
+  const dueRaw = String(formData.get('due_date') ?? '').trim();
   const now = new Date();
 
   await table<Task>('tasks').insert({
@@ -37,6 +38,7 @@ export async function addTask(formData: FormData): Promise<void> {
     owner_id,
     project_id,
     title,
+    due_date: isValidIso(dueRaw) ? dueRaw : null,
     dump_date: todayIso(),
     scheduled_date: null,
     scheduled_hour: null,
@@ -72,6 +74,8 @@ export async function addProjectTask(projectId: string, formData: FormData): Pro
   if (!title) return;
 
   const now = new Date();
+  const dueRaw = String(formData.get('due_date') ?? '').trim();
+  const dueDate = isValidIso(dueRaw) ? dueRaw : null;
   const date = String(formData.get('date') ?? '').trim();
   const startMin = parseTimeInput(String(formData.get('start_time') ?? ''));
   const endMin = parseTimeInput(String(formData.get('end_time') ?? ''));
@@ -91,6 +95,7 @@ export async function addProjectTask(projectId: string, formData: FormData): Pro
     await table<Task>('tasks').insert({
       id: newId(),
       ...base,
+      due_date: dueDate,
       scheduled_date: null,
       scheduled_hour: null,
       scheduled_minute: null,
@@ -119,10 +124,13 @@ export async function addProjectTask(projectId: string, formData: FormData): Pro
     if (dates.length === 0) return;
   }
 
+  const series_id = repeat ? newId() : null;
   for (const d of dates) {
     await table<Task>('tasks').insert({
       id: newId(),
       ...base,
+      series_id,
+      due_date: repeat ? null : dueDate,
       scheduled_date: d,
       scheduled_hour: hour,
       scheduled_minute: minute,
@@ -407,4 +415,12 @@ export async function deleteDayBlock(id: string): Promise<void> {
   if (!row || row.owner_id !== owner_id) return;
   await table<DayBlock>('day_blocks').remove(id);
   revalidatePath('/today');
+}
+
+/** Set or clear a task's deadline. An empty value clears it. */
+export async function setTaskDue(id: string, formData: FormData): Promise<void> {
+  await requireOwner();
+  const raw = String(formData.get('due_date') ?? '').trim();
+  const updated = await table<Task>('tasks').update(id, { due_date: isValidIso(raw) ? raw : null });
+  revalidateTaskSurfaces(updated?.project_id ?? null);
 }

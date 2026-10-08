@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { getSessionEmail } from '@/lib/auth/session';
-import { getBrainDumpGrouped, getTasksForDate, getOverdueTasks, getDayLoads, getDayBlocks } from '@/features/today/queries';
+import { getBrainDumpGrouped, getTasksForDate, getOverdueTasks, getDayLoads, getDayBlocks, getDueSoonTasks } from '@/features/today/queries';
+import { rolloverUnfinished } from '@/features/today/rollover';
 import {
   addTask, scheduleTask, resizeTask, unscheduleTask, toggleTaskDone, deleteTask,
   moveTaskToToday, moveAllOverdueToToday, setOneThing, setTaskCategory, logFocusSession,
@@ -25,7 +26,10 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   const realToday = todayIso();
   const activeDate = date ?? realToday;
 
-  const [brainDumpGroups, tasks, projects, overdue, dayLoads, streak, stalled, stats, settings, dayBlocks] = await Promise.all([
+  // Unfinished work from earlier days moves to today by itself, before anything is read.
+  const rolledCount = await rolloverUnfinished(email, realToday);
+
+  const [brainDumpGroups, tasks, projects, overdue, dayLoads, streak, stalled, stats, settings, dayBlocks, dueSoon] = await Promise.all([
     getBrainDumpGrouped(email),
     getTasksForDate(email, activeDate),
     getProjects(),
@@ -36,6 +40,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
     getDayStats(email, realToday, realToday),
     getSettings(email),
     getDayBlocks(email, activeDate),
+    getDueSoonTasks(email, realToday),
   ]);
 
   return (
@@ -46,6 +51,8 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
         brainDumpGroups={brainDumpGroups}
         tasks={tasks}
         overdue={overdue}
+        dueSoon={dueSoon}
+        rolledCount={rolledCount}
         dayLoads={dayLoads}
         streak={streak}
         stalled={stalled.map((p) => ({ id: p.id, name: p.name, days: p.days }))}
