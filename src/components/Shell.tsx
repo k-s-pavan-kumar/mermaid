@@ -38,6 +38,7 @@ export async function Shell({
     { label: 'Today', href: '/today', group: 'Page', hint: 'g t' },
     { label: 'Dashboard — targets, time split & financial goal', href: '/dashboard', group: 'Page', hint: 'g d' },
     { label: 'Projects', href: '/projects', group: 'Page', hint: 'g p' },
+    { label: 'Goals — yearly goals & month-wise project plan', href: '/goals', group: 'Page', hint: 'g o' },
     { label: 'Clients', href: '/clients', group: 'Page', hint: 'g c' },
     { label: 'Calendar', href: '/calendar', group: 'Page', hint: 'g a' },
     { label: 'Billing — invoices & quotes', href: '/billing', group: 'Page', hint: 'g b' },

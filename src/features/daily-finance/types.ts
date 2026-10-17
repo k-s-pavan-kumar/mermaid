@@ -237,6 +237,13 @@ export interface InvestmentLogEntry {
   amount: number;
   /** Free text: "Nifty 50 index fund", "Gold", "FD – SBI". */
   invested_in: string;
+  /**
+   * Bucket the amount counts toward — 'stocks', 'gold', 'silver',
+   * 'mutual_funds', 'fd_bonds', 'crypto', 'real_estate', 'other' or a custom
+   * lower-case label. Optional: rows saved before categories existed have
+   * none and are guessed from `invested_in` (see investment-categories.ts).
+   */
+  category?: string;
   /** 'YYYY-MM-DD' */
   date: string;
   created_at: string;

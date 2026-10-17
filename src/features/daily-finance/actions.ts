@@ -6,7 +6,7 @@ import { getSessionEmail } from '@/lib/auth/session';
 import type { FinanceEntry, FinanceCategory, FinanceCategoryRule, FinanceObligation } from './types';
 import { EXPENSE_CATEGORIES, SALARY_CATEGORY } from './types';
 import { insertIncomeEntry, insertRewardVaultExpense, saveIncomeStream, removeIncomeStream, seedStreamsFromCategories } from './queries';
-import { addInvestmentLogEntry, removeInvestmentLogEntry } from './set-aside';
+import { addInvestmentLogEntry, removeInvestmentLogEntry, setInvestmentCategory } from './set-aside';
 import { newId } from '@/lib/id';
 import { todayIso } from '@/lib/tz/today';
 
@@ -379,6 +379,10 @@ export async function addInvestment(formData: FormData): Promise<StreamActionRes
     amount: Number(String(formData.get('amount') ?? '').replace(/[,\s₹]/g, '')),
     investedIn: String(formData.get('invested_in') ?? ''),
     date: String(formData.get('date') ?? '').trim() || todayIso(),
+    // "Custom…" in the picker posts the typed name in custom_category.
+    category: formData.get('category') === '__custom__'
+      ? String(formData.get('custom_category') ?? '')
+      : String(formData.get('category') ?? ''),
   });
   if (!res.ok) return { ok: false, message: res.error };
   revalidatePath('/daily-finance/investments');
@@ -388,4 +392,9 @@ export async function addInvestment(formData: FormData): Promise<StreamActionRes
 export async function deleteInvestment(id: string): Promise<void> {
   const owner = await requireOwner();
   if (await removeInvestmentLogEntry(owner, id)) revalidatePath('/daily-finance/investments');
+}
+
+export async function changeInvestmentCategory(id: string, category: string): Promise<void> {
+  const owner = await requireOwner();
+  if (await setInvestmentCategory(owner, id, category)) revalidatePath('/daily-finance/investments');
 }

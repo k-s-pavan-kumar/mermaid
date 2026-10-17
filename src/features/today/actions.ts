@@ -9,6 +9,7 @@ import { DAY_MIN, addDays, endDate, parseHHMM, spanMinutes } from './dayblocks';
 import { clampDuration, durationMinutes, normaliseMinute, snapToSlot, MIN_DURATION_MINUTES, MAX_DURATION_MINUTES } from './time';
 import { expandDates, isValidIso, parseTimeInput } from './recurrence';
 import { newId } from '@/lib/id';
+import { pickSeriesToDelete, type SeriesDeleteScope } from './series';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
@@ -261,6 +262,32 @@ export async function deleteTask(id: string): Promise<void> {
   const existing = await table<Task>('tasks').find(id);
   await table<Task>('tasks').remove(id);
   revalidateTaskSurfaces(existing?.project_id ?? null);
+}
+
+/**
+ * Delete part or all of a Repeat series.
+ *
+ *   - 'this'  : just this one day.
+ *   - 'later' : this day and every later day in the series. Done days are
+ *               kept so hours already worked and logged stay in the totals.
+ *   - 'all'   : every day in the series, done or not.
+ *
+ * A task with no series_id (a one-off) simply deletes itself, whatever the
+ * scope. Scoped to the signed-in owner so a posted id can't reach other rows.
+ */
+export async function deleteTaskSeries(id: string, scope: SeriesDeleteScope = 'later'): Promise<void> {
+  const owner_id = await requireOwner();
+  const anchor = await table<Task>('tasks').find(id);
+  if (!anchor || anchor.owner_id !== owner_id) return;
+
+  const pool = anchor.series_id && scope !== 'this'
+    ? await table<Task>('tasks').where((t) => t.owner_id === owner_id && t.series_id === anchor.series_id)
+    : [anchor];
+  for (const t of pickSeriesToDelete(pool, anchor, scope)) await table<Task>('tasks').remove(t.id);
+
+  revalidateTaskSurfaces(anchor.project_id);
+  revalidatePath('/calendar');
+  if (anchor.project_id) revalidatePath('/clients', 'layout');
 }
 
 /**

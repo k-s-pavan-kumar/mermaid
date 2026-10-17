@@ -18,6 +18,7 @@ import { table } from '@/lib/data';
 import { newId } from '@/lib/id';
 import type { FinanceEntry, InvestmentLogEntry } from './types';
 import { SISTER_CATEGORY } from './types';
+import { categoryLabel, entryCategory, normaliseCategory } from './investment-categories';
 
 const r2 = (n: number) => Math.round(n * 100) / 100;
 
@@ -133,25 +134,43 @@ export async function getSisterMonthly(ownerId: string, year: number): Promise<{
 // Investment log — plain, hand-kept, standalone.
 // ---------------------------------------------------------------------------
 
-/** Oldest first, so a row's S.no never changes when a newer one is added. */
+/**
+ * Oldest first, so a row's S.no never changes when a newer one is added.
+ * Every row comes back with a category: rows saved before categories existed
+ * are guessed from their "invested in" text (gold -> Gold, FD -> FD / Bonds…).
+ */
 export async function getInvestmentLog(ownerId: string): Promise<InvestmentLogEntry[]> {
   const rows = await table<InvestmentLogEntry>('finance_investment_log').where((r) => r.owner_id === ownerId);
-  return [...rows].sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.created_at.localeCompare(b.created_at)));
+  return rows
+    .map((r) => ({ ...r, category: entryCategory(r) }))
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : a.created_at.localeCompare(b.created_at)));
 }
 
 export async function addInvestmentLogEntry(input: {
-  ownerId: string; amount: number; investedIn: string; date: string;
+  ownerId: string; amount: number; investedIn: string; date: string; category?: string;
 }): Promise<SaveResult> {
-  const investedIn = input.investedIn.trim().replace(/\s+/g, ' ').slice(0, 80);
+  const category = input.category && input.category.trim() ? normaliseCategory(input.category) : undefined;
+  // Picking a category is enough on its own: "Gold" + an amount needs no
+  // further description. With no category, the description stays required.
+  const investedIn = (input.investedIn.trim() || (category ? categoryLabel(category) : '')).replace(/\s+/g, ' ').slice(0, 80);
   if (!investedIn) return { ok: false, error: 'Say what you invested in.' };
   if (!Number.isFinite(input.amount) || input.amount <= 0) return { ok: false, error: 'Enter the amount invested.' };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.date)) return { ok: false, error: 'Pick a date.' };
   const id = newId();
   await table<InvestmentLogEntry>('finance_investment_log').insert({
     id, owner_id: input.ownerId, amount: r2(input.amount), invested_in: investedIn, date: input.date,
+    category: category ?? entryCategory({ invested_in: investedIn }),
     created_at: new Date().toISOString(),
   });
   return { ok: true, id };
+}
+
+/** Move one entry to another category (also how old, guessed rows get a real one). */
+export async function setInvestmentCategory(ownerId: string, id: string, category: string): Promise<boolean> {
+  const row = await table<InvestmentLogEntry>('finance_investment_log').find(id);
+  if (!row || row.owner_id !== ownerId) return false;
+  await table<InvestmentLogEntry>('finance_investment_log').update(id, { category: normaliseCategory(category) });
+  return true;
 }
 
 export async function removeInvestmentLogEntry(ownerId: string, id: string): Promise<boolean> {
