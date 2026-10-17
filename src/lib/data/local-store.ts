@@ -48,11 +48,6 @@ export type LocalDB = {
   journal_entries?: any[];
   // SDK analytics (Release Stats). Rollups only — raw events are never stored.
   income_streams?: any[];
-  // Daily Finance: the hand-kept investment log.
-  finance_investment_log?: any[];
-  // Yearly goals and the projects planned under them, month by month.
-  goals?: any[];
-  goal_projects?: any[];
   analytics_daily?: any[];
   analytics_users?: any[];
 };

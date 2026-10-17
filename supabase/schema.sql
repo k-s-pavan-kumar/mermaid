@@ -122,7 +122,7 @@ create table clients (
   -- What you do for them. Multi-valued because one client is rarely one
   -- kind of work: a web build becomes a retainer and books a training day.
   work_types   text[] not null default '{}'
-                 check (work_types <@ array['web','mobile','design','security','teaching','consulting','maintenance','content','marketing']::text[]),
+                 check (cardinality(work_types) <= 20),  -- built-in keys or the user's own custom tags
   project_cost numeric,                       -- agreed TOTAL project cost (fixed price), pre-fills the first invoice/quote line
   -- How they pay: one fixed project cost, or a monthly retainer (e.g. digital
   -- marketing). Each received month is a paid invoice carrying invoices.period.
@@ -518,7 +518,7 @@ create table finance_entries (
   amount             numeric not null check (amount >= 0), -- always positive; sign comes from `type`
   note               text,
   source             text not null check (source in
-                       ('manual', 'invoice_payment', 'bounty_payout', 'reward_vault', 'salary', 'obligation', 'invoice_split')),
+                       ('manual', 'invoice_payment', 'bounty_payout', 'reward_vault', 'salary', 'obligation')),
   created_at         timestamptz not null default now(),
   linked_project_id  uuid references projects(id) on delete set null,
   linked_invoice_id  uuid references invoices(id) on delete set null,
@@ -526,9 +526,7 @@ create table finance_entries (
   linked_need_id     text,  -- references needs(id); same reason
   linked_obligation_id text, -- references finance_obligations(id); no FK since that table is created further below
   -- Tax already deducted at source on this income row (see invoices.tds_amount).
-  tds_amount         numeric,
-  -- Sister's share (see migration 015 / daily-finance/set-aside.ts)
-  split_pct            numeric
+  tds_amount         numeric
 );
 
 create index finance_entries_owner_date_idx on finance_entries(owner_id, date desc);
@@ -917,60 +915,3 @@ create index if not exists income_streams_owner_idx on income_streams(owner_id, 
 alter table income_streams enable row level security;
 drop policy if exists "owner full access" on income_streams;
 create policy "owner full access" on income_streams for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
-
--- ---------------------------------------------------------------------------
--- Sister's share & investment log (Daily Finance). Mirrors migration 015.
--- ---------------------------------------------------------------------------
--- At most one sister's share per invoice.
-create unique index if not exists finance_entries_split_once_idx
-  on finance_entries(linked_invoice_id) where source = 'invoice_split';
-
--- Investment log: amount, what it went into, date. Standalone — not linked to
--- invoices and never posts to finance_entries.
-create table if not exists finance_investment_log (
-  id          text primary key,
-  owner_id    uuid not null references auth.users(id) default auth.uid(),
-  amount      numeric not null check (amount > 0),
-  invested_in text not null,
-  date        date not null,
-  created_at  timestamptz not null default now()
-);
-create index if not exists finance_investment_log_owner_idx on finance_investment_log(owner_id, date);
-alter table finance_investment_log enable row level security;
-drop policy if exists "owner full access" on finance_investment_log;
-create policy "owner full access" on finance_investment_log for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
-
--- ---------------------------------------------------------------------------
--- Yearly goals + investment categories. Mirrors migration 017.
--- ---------------------------------------------------------------------------
-create table if not exists goals (
-  id          uuid primary key default uuid_generate_v4(),
-  owner_id    uuid not null references auth.users(id) default auth.uid(),
-  year        int  not null check (year between 2000 and 2100),
-  title       text not null,
-  description text,
-  status      text not null default 'active' check (status in ('active','done','dropped')),
-  created_at  timestamptz not null default now()
-);
-create index if not exists goals_owner_year_idx on goals(owner_id, year);
-alter table goals enable row level security;
-drop policy if exists "owner full access" on goals;
-create policy "owner full access" on goals for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
-
-create table if not exists goal_projects (
-  id          uuid primary key default uuid_generate_v4(),
-  owner_id    uuid not null references auth.users(id) default auth.uid(),
-  goal_id     uuid not null references goals(id) on delete cascade,
-  project_id  uuid not null references projects(id) on delete cascade,
-  month       text check (month ~ '^\d{4}-(0[1-9]|1[0-2])$'),
-  created_at  timestamptz not null default now(),
-  unique (goal_id, project_id)
-);
-create index if not exists goal_projects_owner_idx on goal_projects(owner_id, goal_id);
-create index if not exists goal_projects_project_idx on goal_projects(project_id);
-alter table goal_projects enable row level security;
-drop policy if exists "owner full access" on goal_projects;
-create policy "owner full access" on goal_projects for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
-
-alter table finance_investment_log add column if not exists category text;
-create index if not exists finance_investment_log_cat_idx on finance_investment_log(owner_id, category);

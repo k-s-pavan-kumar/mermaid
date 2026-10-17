@@ -6,7 +6,6 @@ import { getSessionEmail } from '@/lib/auth/session';
 import type { FinanceEntry, FinanceCategory, FinanceCategoryRule, FinanceObligation } from './types';
 import { EXPENSE_CATEGORIES, SALARY_CATEGORY } from './types';
 import { insertIncomeEntry, insertRewardVaultExpense, saveIncomeStream, removeIncomeStream, seedStreamsFromCategories } from './queries';
-import { addInvestmentLogEntry, removeInvestmentLogEntry, setInvestmentCategory } from './set-aside';
 import { newId } from '@/lib/id';
 import { todayIso } from '@/lib/tz/today';
 
@@ -271,17 +270,15 @@ export async function deleteFinanceEntry(id: string): Promise<void> {
   const owner = await requireOwner();
   const row = await table<FinanceEntry>('finance_entries').find(id);
   // Manual expenses, reward_vault-sourced expenses, salary entries, and
-  // obligation settlements and the sister's share can
-  // all be deleted directly by the user (a
+  // obligation settlements can all be deleted directly by the user (a
   // mis-recorded figure is a normal correction, and re-settling a due after
   // deleting a mistaken entry is exactly the intended flow). Anything else
   // — invoice/bounty income — must be corrected at its source so the ledger
   // never drifts from the record it mirrors.
   if (!row || row.owner_id !== owner) return;
-  if (!['manual', 'reward_vault', 'salary', 'obligation', 'invoice_split'].includes(row.source)) return;
+  if (!['manual', 'reward_vault', 'salary', 'obligation'].includes(row.source)) return;
   await table<FinanceEntry>('finance_entries').remove(id);
   revalidatePath('/daily-finance');
-  revalidatePath('/daily-finance/investments');
   revalidatePath('/dashboard');
 }
 
@@ -366,35 +363,4 @@ export async function createStreamsFromIncome(year: number): Promise<StreamActio
   return made > 0
     ? { ok: true, message: `Created ${made} stream${made === 1 ? '' : 's'} from your income` }
     : { ok: false, message: 'No income categories to turn into streams yet' };
-}
-
-
-// ---------------------------------------------------------------------------
-// Investment log — plain hand-kept list, separate from the ledger.
-// ---------------------------------------------------------------------------
-export async function addInvestment(formData: FormData): Promise<StreamActionResult> {
-  const owner = await requireOwner();
-  const res = await addInvestmentLogEntry({
-    ownerId: owner,
-    amount: Number(String(formData.get('amount') ?? '').replace(/[,\s₹]/g, '')),
-    investedIn: String(formData.get('invested_in') ?? ''),
-    date: String(formData.get('date') ?? '').trim() || todayIso(),
-    // "Custom…" in the picker posts the typed name in custom_category.
-    category: formData.get('category') === '__custom__'
-      ? String(formData.get('custom_category') ?? '')
-      : String(formData.get('category') ?? ''),
-  });
-  if (!res.ok) return { ok: false, message: res.error };
-  revalidatePath('/daily-finance/investments');
-  return { ok: true, message: 'Investment added' };
-}
-
-export async function deleteInvestment(id: string): Promise<void> {
-  const owner = await requireOwner();
-  if (await removeInvestmentLogEntry(owner, id)) revalidatePath('/daily-finance/investments');
-}
-
-export async function changeInvestmentCategory(id: string, category: string): Promise<void> {
-  const owner = await requireOwner();
-  if (await setInvestmentCategory(owner, id, category)) revalidatePath('/daily-finance/investments');
 }

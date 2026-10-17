@@ -22,8 +22,7 @@ export type FinanceEntrySource =
   | 'bounty_payout'    // a BountyCase reaching status: paid
   | 'reward_vault'     // a Need marked purchased, if that setting is on
   | 'salary'           // a hand-typed pay-day entry — the one other deliberate manual income path (see logSalary)
-  | 'obligation'       // a Due (see FinanceObligation) marked settled — either direction
-  | 'invoice_split';   // the sister's share of an invoice, added by hand from that invoice's page — see set-aside.ts
+  | 'obligation';      // a Due (see FinanceObligation) marked settled — either direction
 
 export interface FinanceEntry {
   id: string;
@@ -53,10 +52,6 @@ export interface FinanceEntry {
    *  purposes) instead of disappearing into the gap between what was
    *  invoiced/earned and what showed up in the bank. Never set on expenses. */
   tds_amount?: number | null;
-  // Set only on `invoice_split` rows (see set-aside.ts).
-  /** The % of what was received on the invoice that this share is — kept so
-   *  a later payment / TDS correction on that invoice can recompute the amount. */
-  split_pct?: number | null;
 }
 
 export const EXPENSE_CATEGORIES = [
@@ -210,41 +205,4 @@ export interface MonthTotals {
   income: number;
   expense: number;
   net: number;
-}
-
-
-// ---------------------------------------------------------------------------
-// Sister's share
-//
-// NOT automatic. On an invoice's own page the person chooses to give their
-// sister a % (default 10) of what was received on THAT invoice; recurring
-// invoices are simply never given one. It posts one expense entry per
-// invoice — see set-aside.ts.
-// ---------------------------------------------------------------------------
-
-export const SISTER_CATEGORY = 'Family — Sister';
-export const DEFAULT_SISTER_PCT = 10;
-
-// ---------------------------------------------------------------------------
-// Investment log — a plain list the person fills in by hand: how much, into
-// what, on which date. Deliberately standalone: it is NOT linked to invoices
-// and posts nothing to the ledger, so it never changes income/expense totals.
-// ---------------------------------------------------------------------------
-
-export interface InvestmentLogEntry {
-  id: string;
-  owner_id: string;
-  amount: number;
-  /** Free text: "Nifty 50 index fund", "Gold", "FD – SBI". */
-  invested_in: string;
-  /**
-   * Bucket the amount counts toward — 'stocks', 'gold', 'silver',
-   * 'mutual_funds', 'fd_bonds', 'crypto', 'real_estate', 'other' or a custom
-   * lower-case label. Optional: rows saved before categories existed have
-   * none and are guessed from `invested_in` (see investment-categories.ts).
-   */
-  category?: string;
-  /** 'YYYY-MM-DD' */
-  date: string;
-  created_at: string;
 }

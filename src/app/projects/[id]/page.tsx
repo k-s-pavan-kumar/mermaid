@@ -34,19 +34,11 @@ import { ProjectTypePicker } from '@/features/projects/components/ProjectTypePic
 import { getClients } from '@/features/clients/queries';
 import { TYPE_COLOR, TYPE_LABEL, projectTypes, hasType } from '@/lib/project-colors';
 import { getTasksForProject } from '@/features/today/queries';
-import { addProjectTask, toggleTaskDone, setTaskLoggedHours, setTaskDue, deleteTaskSeries } from '@/features/today/actions';
-import { TaskRowMenu } from '@/features/projects/components/TaskRowMenu';
-import { DueBadge } from '@/features/today/components/DueBadge';
+import { addProjectTask, toggleTaskDone, setTaskLoggedHours } from '@/features/today/actions';
 import { projectTime, fmtHours } from '@/features/projects/time';
 import { table } from '@/lib/data';
 import type { FocusSession } from '@/features/today/types';
 import { fmtRange } from '@/features/today/time';
-import { groupTasksByMonth } from '@/features/today/month-groups';
-import { TaskScheduleFields } from '@/features/today/components/TaskScheduleFields';
-import { todayIso } from '@/lib/tz/today';
-import { getGoals, getLinksForProject } from '@/features/goals/queries';
-import { assignProjectToGoal, unlinkGoalProject } from '@/features/goals/actions';
-import { MONTH_NAMES, monthLabel } from '@/features/goals/types';
 
 const inr = (n: number) => '₹' + n.toLocaleString('en-IN');
 const TAB_LABEL: Record<string, string> = {
@@ -79,10 +71,6 @@ export default async function ProjectDetailPage({
 
   const tasks = await getTasksForProject(id);
   const boundAddProjectTask = addProjectTask.bind(null, id);
-
-  const [allGoals, goalLinks] = await Promise.all([getGoals(email), getLinksForProject(email, id)]);
-  const goalById = new Map(allGoals.map((g) => [g.id, g]));
-  const projectGoals = goalLinks.filter((l) => goalById.has(l.goal_id));
 
   const integrations = await getIntegrationsForProject(id);
   const boundAddPhase = addPhase.bind(null, id);
@@ -131,17 +119,6 @@ export default async function ProjectDetailPage({
           </span>
         ))}
       </div>
-
-      {projectGoals.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: -2, marginBottom: 10 }}>
-          {projectGoals.map((l) => (
-            <a key={l.id} href={`/goals?year=${goalById.get(l.goal_id)!.year}`} className="tag idea" style={{ textDecoration: 'none' }}
-               title="Yearly goal this project belongs to">
-              ◎ {goalById.get(l.goal_id)!.title} · {monthLabel(l.month)}
-            </a>
-          ))}
-        </div>
-      )}
 
       {project.description && <p className="text-muted" style={{ marginTop: 0 }}>{project.description}</p>}
 
@@ -204,89 +181,48 @@ export default async function ProjectDetailPage({
           {tasks.length === 0 ? (
             <div className="card"><div className="empty"><div className="big">No tasks yet</div>Add one below — it'll show up on Today too.</div></div>
           ) : (
-            <div>
-              {groupTasksByMonth(tasks).map((g) => {
-                const nowMonth = todayIso().slice(0, 7);
-                const open = g.key === nowMonth || g.key === 'unscheduled' || g.done < g.tasks.length;
-                const h = (m: number) => `${Math.round((m / 60) * 100) / 100}h`;
-                return (
-                  <details key={g.key} open={open} style={{ marginBottom: 14 }}>
-                    <summary style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12, cursor: 'pointer', padding: '6px 2px', listStyle: 'none' }}>
-                      <strong style={{ fontFamily: "'Fraunces',serif", fontSize: 16 }}>{g.label}</strong>
-                      <span className="text-muted" style={{ fontSize: 12 }}>
-                        {g.tasks.length} task{g.tasks.length === 1 ? '' : 's'} · {g.done} done
-                        {g.plannedMinutes > 0 && <> · {h(g.workedMinutes)} worked / {h(g.plannedMinutes)} planned</>}
-                      </span>
-                    </summary>
-                    <div className="card" style={{ padding: '4px 18px' }}>
-                      {g.tasks.map((t) => (
-                    <div key={t.id} className="list-row">
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                        <ActionButton
-                          action={async () => { 'use server'; await toggleTaskDone(t.id, !t.done); }}
-                          className={`check-btn${t.done ? ' checked' : ''}`}
-                          aria-label={t.done ? 'Mark not done' : 'Mark done'}
-                        >
-                          <span className="sr-only">{t.done ? 'Done' : 'Not done'}</span>
-                        </ActionButton>
-                        <span style={{ textDecoration: t.done ? 'line-through' : 'none', color: t.done ? 'var(--muted)' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                          {t.title}
-                        </span>
-                        {t.due_date && !t.done && <DueBadge due={t.due_date} today={todayIso()} />}
-                      </span>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
-                        {!t.done && (
-                          <form
-                            action={async (fd: FormData) => { 'use server'; await setTaskDue(t.id, fd); }}
-                            style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-                            title="Deadline — clear the date and Save to remove it"
-                          >
-                            <input name="due_date" type="date" defaultValue={t.due_date ?? ''}
-                              aria-label={`Deadline for ${t.title}`} style={{ padding: '3px 5px', fontSize: 11.5 }} />
-                            <SubmitButton className="btn-link" pendingLabel="…">Due</SubmitButton>
-                          </form>
-                        )}
-                        <form
-                          action={async (fd: FormData) => { 'use server'; await setTaskLoggedHours(t.id, fd); }}
-                          style={{ display: 'flex', alignItems: 'center', gap: 4 }}
-                          title="Hours actually worked on this task"
-                        >
-                          <input name="hours" type="number" min={0} max={2000} step="0.25"
-                            defaultValue={Math.round(((t.logged_minutes ?? 0) / 60) * 100) / 100}
-                            aria-label={`Hours worked on ${t.title}`} style={{ width: 64, padding: '4px 6px', fontSize: 12 }} />
-                          <span className="text-muted" style={{ fontSize: 11 }}>h</span>
-                          <SubmitButton className="btn-link" pendingLabel="…">Save</SubmitButton>
-                        </form>
-                        <span className="text-muted" style={{ fontSize: 11.5 }}>
-                          {t.scheduled_date ? `${t.scheduled_date} · ${fmtRange(t)}` : 'Unscheduled'}
-                        </span>
-                        <TaskRowMenu
-                          isSeries={!!t.series_id}
-                          dateLabel={t.scheduled_date ?? null}
-                          deleteOne={async () => { 'use server'; await deleteTaskSeries(t.id, 'this'); }}
-                          deleteLater={async () => { 'use server'; await deleteTaskSeries(t.id, 'later'); }}
-                          deleteAll={async () => { 'use server'; await deleteTaskSeries(t.id, 'all'); }}
-                        />
-                      </span>
-                    </div>
-
-                      ))}
-                    </div>
-                  </details>
-                );
-              })}
+            <div className="card" style={{ padding: '4px 18px' }}>
+              {tasks.map((t) => (
+                <div key={t.id} className="list-row">
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+                    <ActionButton
+                      action={async () => { 'use server'; await toggleTaskDone(t.id, !t.done); }}
+                      className={`check-btn${t.done ? ' checked' : ''}`}
+                      aria-label={t.done ? 'Mark not done' : 'Mark done'}
+                    >
+                      <span className="sr-only">{t.done ? 'Done' : 'Not done'}</span>
+                    </ActionButton>
+                    <span style={{ textDecoration: t.done ? 'line-through' : 'none', color: t.done ? 'var(--muted)' : 'inherit', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {t.title}
+                    </span>
+                  </span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 }}>
+                    <form
+                      action={async (fd: FormData) => { 'use server'; await setTaskLoggedHours(t.id, fd); }}
+                      style={{ display: 'flex', alignItems: 'center', gap: 4 }}
+                      title="Hours actually worked on this task"
+                    >
+                      <input name="hours" type="number" min={0} max={2000} step="0.25"
+                        defaultValue={Math.round(((t.logged_minutes ?? 0) / 60) * 100) / 100}
+                        aria-label={`Hours worked on ${t.title}`} style={{ width: 64, padding: '4px 6px', fontSize: 12 }} />
+                      <span className="text-muted" style={{ fontSize: 11 }}>h</span>
+                      <SubmitButton className="btn-link" pendingLabel="…">Save</SubmitButton>
+                    </form>
+                    <span className="text-muted" style={{ fontSize: 11.5 }}>
+                      {t.scheduled_date ? `${t.scheduled_date} · ${fmtRange(t)}` : 'Unscheduled'}
+                    </span>
+                  </span>
+                </div>
+              ))}
             </div>
           )}
           <div className="section-title"><h3>Add a task</h3></div>
-          <form action={boundAddProjectTask}>
-            <div className="form-row">
-              <input name="title" placeholder="What needs doing?" required />
-              <SubmitButton className="btn-inline" pendingLabel="Adding…">Add</SubmitButton>
-            </div>
-            <TaskScheduleFields today={todayIso()} />
+          <form action={boundAddProjectTask} className="form-row">
+            <input name="title" placeholder="What needs doing?" required />
+            <SubmitButton className="btn-inline" pendingLabel="Adding…">Add</SubmitButton>
           </form>
           <p className="text-muted text-sm">
-            Pick a date with From/To and the task lands on that day's calendar with its hours worked out; tick Repeat to fill many days at once. Ticking a scheduled task done credits its planned hours automatically, or enter the hours you actually worked next to each task — the rate boxes above are invoiced/collected
+            Enter the hours you actually worked next to each task — the rate boxes above are invoiced/collected
             money ÷ these hours (timer sessions on a task are added automatically). Unscheduled tasks show up in Today's brain dump tagged with this project. Scheduling or
             completing them there updates this list too — it's the same record either way.
           </p>
@@ -538,38 +474,6 @@ export default async function ProjectDetailPage({
 
               <SubmitButton className="btn" pendingLabel="Saving…" style={{ width: 'fit-content' }}>Save changes</SubmitButton>
             </form>
-          </div>
-
-          <div className="card" style={{ maxWidth: 560, marginTop: 16 }}>
-            <h3>Yearly goals</h3>
-            <p className="text-muted" style={{ fontSize: 11.5, marginTop: -4 }}>
-              Attach this project to a goal and the month it is planned for. The same plan shows on the{' '}
-              <a href="/goals">Goals</a> page.
-            </p>
-            {projectGoals.map((l) => (
-              <div key={l.id} className="list-row">
-                <span>{goalById.get(l.goal_id)!.title} <span className="text-muted" style={{ fontSize: 12 }}>· {monthLabel(l.month)}</span></span>
-                <ActionButton
-                  action={async () => { 'use server'; await unlinkGoalProject(l.id); }}
-                  className="df-del" title="Remove from this goal" pendingLabel="…"
-                >×</ActionButton>
-              </div>
-            ))}
-            {allGoals.length === 0 ? (
-              <p className="text-muted text-sm" style={{ marginBottom: 0 }}>No goals yet — add one on the <a href="/goals">Goals</a> page.</p>
-            ) : (
-              <form action={assignProjectToGoal.bind(null, id)} className="form-row" style={{ marginTop: 10, marginBottom: 0 }}>
-                <select name="goal_id" required defaultValue="" aria-label="Goal">
-                  <option value="" disabled>Pick a goal…</option>
-                  {allGoals.filter((g) => !projectGoals.some((l) => l.goal_id === g.id)).map((g) => <option key={g.id} value={g.id}>{g.year} — {g.title}</option>)}
-                </select>
-                <select name="month" aria-label="Month">
-                  <option value="">Month…</option>
-                  {MONTH_NAMES.map((m, i) => <option key={m} value={String(i + 1).padStart(2, '0')}>{m}</option>)}
-                </select>
-                <SubmitButton className="btn-inline" pendingLabel="Saving…">Add to goal</SubmitButton>
-              </form>
-            )}
           </div>
 
           <div className="card" style={{ maxWidth: 560, marginTop: 16 }}>

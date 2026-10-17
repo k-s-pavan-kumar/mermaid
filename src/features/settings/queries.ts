@@ -11,11 +11,9 @@ import {
  * anywhere near a settings screen.
  */
 export async function getSettings(ownerId: string): Promise<WorkspaceSettings> {
-  const [rows, history] = await Promise.all([
-    table<WorkspaceSettings>('settings').where((s) => s.owner_id === ownerId),
-    getTargetsHistory(ownerId),
-  ]);
+  const rows = await table<WorkspaceSettings>('settings').where((s) => s.owner_id === ownerId);
   const found = rows[0];
+  const history = await getTargetsHistory(ownerId);
 
   return {
     id: found?.id ?? `set_${ownerId}`,

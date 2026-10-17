@@ -8,8 +8,6 @@ import { getSettings } from '@/features/settings/queries';
 import { todayIso } from '@/lib/tz/today';
 import { balanceDue, grandTotal, subtotal, type IncomeStream, type Invoice, type LineItem, type Quote } from './types';
 import { categoryForProjectType, type FinanceEntry } from '@/features/daily-finance/types';
-import { setInvoiceShare, removeInvoiceShare, resyncInvoiceShare } from '@/features/daily-finance/set-aside';
-import { DEFAULT_SISTER_PCT } from '@/features/daily-finance/types';
 import type { Project } from '@/features/projects/types';
 import type { Client } from '@/features/clients/types';
 import { newId } from '@/lib/id';
@@ -234,8 +232,6 @@ async function applyInvoicePayment(
   });
 
   const paid = await paidSoFar(owner, inv.id);
-  // Only matters if a sister's share was already given on this invoice.
-  await resyncInvoiceShare(owner, inv.id, paid);
   const remaining = balanceDue(inv, paid);
   const status: Invoice['status'] = remaining <= 0 ? 'paid' : 'partial';
   await table<Invoice>('invoices').update(inv.id, {
@@ -298,10 +294,10 @@ export async function deleteInvoicePayment(paymentId: string): Promise<void> {
 
   const invoiceId = entry.linked_invoice_id;
   await table<FinanceEntry>('finance_entries').remove(paymentId);
+
   const inv = await table<Invoice>('invoices').find(invoiceId);
   if (inv) {
     const paid = await paidSoFar(owner, invoiceId);
-    await resyncInvoiceShare(owner, invoiceId, paid);
     const remaining = balanceDue(inv, paid);
     const status: Invoice['status'] = paid <= 0 ? 'pending' : remaining <= 0 ? 'paid' : 'partial';
     await table<Invoice>('invoices').update(invoiceId, {
@@ -339,13 +335,10 @@ export async function setInvoiceTds(invoiceId: string, tdsAmount: number): Promi
     // The common case, unchanged from before partial payments existed: one
     // payment covers the whole invoice, so keep its recorded amount net of
     // TDS in sync as the TDS figure is corrected.
-    const netAmount = Math.max(0, grandTotal(inv) - clean);
     await table<FinanceEntry>('finance_entries').update(onlyEntry.id, {
-      amount: netAmount,
+      amount: Math.max(0, grandTotal(inv) - clean),
       tds_amount: clean > 0 ? clean : null,
     });
-    // A sister's share (if given) is a % of what actually arrived, so follow the correction.
-    await resyncInvoiceShare(owner, invoiceId, netAmount);
   } else if (entries.length > 0) {
     // Several payments on file — each already records the real cash that
     // came in, so leave them alone and just re-derive the status/paid_at
@@ -362,41 +355,6 @@ export async function setInvoiceTds(invoiceId: string, tdsAmount: number): Promi
   revalidatePath(`/billing/invoices/${invoiceId}`);
   revalidatePath('/billing');
   revalidatePath('/daily-finance');
-}
-
-/**
- * Gives the sister her share of THIS invoice — a deliberate click on the
- * invoice page, never automatic (recurring invoices simply never get one).
- * Taken from what has been received on the invoice so far.
- */
-export async function giveSisterShare(formData: FormData): Promise<{ ok: boolean; message: string }> {
-  const owner = await requireOwner();
-  const invoiceId = String(formData.get('invoice_id') ?? '').trim();
-  const pctRaw = String(formData.get('pct') ?? '').trim();
-  const inv = await table<Invoice>('invoices').find(invoiceId);
-  if (!inv || inv.owner_id !== owner) return { ok: false, message: 'Invoice not found.' };
-
-  const res = await setInvoiceShare({
-    ownerId: owner, invoiceId: inv.id, invoiceNumber: inv.number, projectId: inv.project_id,
-    pct: pctRaw === '' ? DEFAULT_SISTER_PCT : Number(pctRaw),
-    received: await paidSoFar(owner, inv.id), today: todayIso(),
-  });
-  if (!res.ok) return { ok: false, message: res.error };
-  revalidatePath(`/billing/invoices/${inv.id}`);
-  revalidatePath('/daily-finance');
-  revalidatePath('/dashboard');
-  return { ok: true, message: 'Added to your ledger' };
-}
-
-export async function removeSisterShare(invoiceId: string): Promise<void> {
-  const owner = await requireOwner();
-  const inv = await table<Invoice>('invoices').find(invoiceId);
-  if (!inv || inv.owner_id !== owner) return;
-  if (await removeInvoiceShare(owner, invoiceId)) {
-    revalidatePath(`/billing/invoices/${invoiceId}`);
-    revalidatePath('/daily-finance');
-    revalidatePath('/dashboard');
-  }
 }
 
 export async function setDocStatus(kind: 'invoice' | 'quote', id: string, status: string): Promise<void> {

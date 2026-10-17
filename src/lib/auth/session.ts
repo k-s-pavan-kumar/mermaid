@@ -61,7 +61,6 @@
 // export { COOKIE_NAME };
 
 
-import { cache } from 'react';
 import { cookies } from 'next/headers';
 import crypto from 'crypto';
 import { createClient } from '@/lib/supabase/server';
@@ -78,18 +77,6 @@ import { createClient } from '@/lib/supabase/server';
 const COOKIE_NAME = 'meridian_session';
 const SECRET = process.env.SESSION_SECRET ?? 'dev-secret-change-me';
 const USE_SUPABASE_AUTH = process.env.DATA_PROVIDER === 'supabase';
-
-// supabase.auth.getUser() is a network round-trip to Supabase Auth. The page,
-// the Shell and the Sidebar all need the user, so without this every page
-// load paid for 3-4 of them. cache() dedupes per request (never across
-// requests or users), so this is purely a speed-up, not a security change.
-const getAuthUser = cache(async () => {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  return user;
-});
 
 function b64url(input: string): string {
   return Buffer.from(input, 'utf8').toString('base64url');
@@ -134,7 +121,10 @@ export async function createSession(email: string): Promise<void> {
 
 export async function getSessionEmail(): Promise<string | null> {
   if (USE_SUPABASE_AUTH) {
-    const user = await getAuthUser();
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     // The Supabase Auth user's UUID — this is what owner_id columns and
     // RLS's auth.uid() actually store/compare, unlike a plain email string.
     return user?.id ?? null;
@@ -157,7 +147,10 @@ export async function getSessionEmail(): Promise<string | null> {
  */
 export async function getSessionDisplayName(): Promise<string | null> {
   if (USE_SUPABASE_AUTH) {
-    const user = await getAuthUser();
+    const supabase = await createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
     if (!user) return null;
     // email can legitimately be absent (phone/OAuth-only identities), so
     // fall back through the profile before giving up on a UUID.

@@ -10,7 +10,6 @@ import { getClients } from '@/features/clients/queries';
 import { getSettings } from '@/features/settings/queries';
 import { AssistantPanel } from './AssistantPanel';
 import { JournalReminders } from './JournalReminders';
-import { BlockReminders } from './BlockReminders';
 import { ViewTabs, type ViewKey } from './ViewTabs';
 
 // The OS chrome: sidebar + topbar (with notifications) + live world-clock
@@ -38,7 +37,6 @@ export async function Shell({
     { label: 'Today', href: '/today', group: 'Page', hint: 'g t' },
     { label: 'Dashboard — targets, time split & financial goal', href: '/dashboard', group: 'Page', hint: 'g d' },
     { label: 'Projects', href: '/projects', group: 'Page', hint: 'g p' },
-    { label: 'Goals — yearly goals & month-wise project plan', href: '/goals', group: 'Page', hint: 'g o' },
     { label: 'Clients', href: '/clients', group: 'Page', hint: 'g c' },
     { label: 'Calendar', href: '/calendar', group: 'Page', hint: 'g a' },
     { label: 'Billing — invoices & quotes', href: '/billing', group: 'Page', hint: 'g b' },
@@ -48,7 +46,6 @@ export async function Shell({
     { label: 'Journal — daily personal notes', href: '/journal', group: 'Personal', hint: 'g j' },
     { label: 'Daily Finance', href: '/daily-finance', group: 'Personal', hint: 'g f' },
     { label: 'Daily Finance — Dues tracker', href: '/daily-finance/dues', group: 'Personal' },
-    { label: 'Daily Finance — Investments', href: '/daily-finance/investments', group: 'Personal' },
     { label: 'Bug Bounty Pipeline', href: '/bounty-pipeline', group: 'Personal', hint: 'g u' },
     { label: 'Reward Vault', href: '/reward-vault', group: 'Personal', hint: 'g v' },
     { label: 'Learning Tracker', href: '/learning-tracker', group: 'Personal', hint: 'g l' },
@@ -81,7 +78,6 @@ export async function Shell({
       <CommandPalette items={items} />
       {email && <AssistantPanel />}
       {email && <JournalReminders />}
-      {email && <BlockReminders />}
     </div>
   );
 }

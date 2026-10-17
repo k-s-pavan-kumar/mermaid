@@ -10,7 +10,7 @@ export interface Client {
   /** What you actually do for them — multi-select, because one client is
    *  rarely one kind of work (a web build that later becomes a retainer
    *  plus a training day). */
-  work_types: WorkType[];
+  work_types: string[]; // built-in keys (see WorkType) or the user's own custom tags
   /** Agreed TOTAL project cost (fixed price for the whole engagement, not
    *  per hour). Pre-fills the first line of a new quote/invoice and drives
    *  the "left to invoice" figure on the client page. */
@@ -79,6 +79,7 @@ export const WORK_TYPE_COLOR: Record<WorkType, string> = {
 
 export const WORK_TYPES = Object.keys(WORK_TYPE_LABEL) as WorkType[];
 
-export function clientWorkTypes(c: Pick<Client, 'work_types'>): WorkType[] {
-  return (c.work_types ?? []).filter((t): t is WorkType => t in WORK_TYPE_LABEL);
+/** Every tag on a client — built-in keys and custom tags alike (blanks dropped). */
+export function clientWorkTypes(c: Pick<Client, 'work_types'>): string[] {
+  return (c.work_types ?? []).filter((t): t is string => typeof t === 'string' && t.trim() !== '');
 }
