@@ -17,7 +17,10 @@ const PRESETS = [25, 15, 50, 5];
 export function FocusTimer({
   tasks = [],
   logSession,
+  startRequest,
 }: {
+  /** Bump `nonce` to start the timer on a given task (the "Start" button on the Up-next card). */
+  startRequest?: { nonce: number; taskId: string | null; minutes: number } | null;
   tasks?: { id: string; title: string; project_id: string | null }[];
   logSession?: (input: {
     minutes: number;
@@ -49,6 +52,17 @@ export function FocusTimer({
     setLogged(`${minutes} min logged${task ? ` on "${task.title}"` : ''}`);
     router.refresh();
   }
+
+  useEffect(() => {
+    if (!startRequest) return;
+    elapsedRef.current = 0;
+    setTotalMin(startRequest.minutes);
+    setSeconds(startRequest.minutes * 60);
+    setTaskId(startRequest.taskId ?? '');
+    setLogged(null);
+    setRunning(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [startRequest?.nonce]);
 
   useEffect(() => {
     if (!running) return;
@@ -91,7 +105,7 @@ export function FocusTimer({
   const ss = String(seconds % 60).padStart(2, '0');
 
   return (
-    <div className="card focus">
+    <div className="card focus" id="focus-timer">
       <img src="/mascot/timer.png" alt="" width={72} height={72} />
       <div className="focus-label">Focus timer — for when starting is the hard part</div>
 

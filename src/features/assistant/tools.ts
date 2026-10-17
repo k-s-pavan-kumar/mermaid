@@ -9,8 +9,7 @@ import { grandTotal, subtotal, type IncomeStream, type Invoice, type LineItem, t
 import { TYPE_LABEL } from '@/lib/project-colors';
 import type { Project, ProjectType } from '@/features/projects/types';
 import type { Task } from '@/features/today/types';
-import type { Client } from '@/features/clients/types';
-import { collectCustomTags, normalizeWorkTypes } from '@/features/clients/work-types';
+import type { Client, WorkType } from '@/features/clients/types';
 import type { Meeting } from '@/features/meetings/types';
 import { newId } from '@/lib/id';
 
@@ -67,7 +66,7 @@ export const TOOL_SPECS: ToolSpec[] = [
     company: str('Company, optional.'),
     email: str('Email, optional.'),
     timezone: str("IANA timezone, e.g. Asia/Kolkata. Defaults to Asia/Kolkata."),
-    work_types: { type: 'array', items: { type: 'string' }, description: 'Built-in: web, mobile, design, security, teaching, consulting, maintenance, content, marketing. Any other short label (e.g. "SEO") is saved as a custom tag.' },
+    work_types: { type: 'array', items: { type: 'string' }, description: 'web, mobile, design, security, teaching, consulting, maintenance, content' },
   }, ['name']),
   fn('create_billing_doc', 'Draft an invoice or a quotation. Amounts are per line item; the number is generated automatically.', {
     kind: str("'invoice' or 'quote'."),
@@ -210,10 +209,7 @@ export async function runTool(name: string, args: Record<string, any>, ownerId: 
         phone: null,
         address: null,
         timezone: args.timezone ? String(args.timezone) : 'Asia/Kolkata',
-        work_types: normalizeWorkTypes(
-          Array.isArray(args.work_types) ? args.work_types : [],
-          collectCustomTags(await table<Client>('clients').where((c) => c.owner_id === ownerId)),
-        ),
+        work_types: (Array.isArray(args.work_types) ? args.work_types.map(String) : []) as WorkType[],
         project_cost: null,
         billing_type: 'project',
         monthly_fee: null,

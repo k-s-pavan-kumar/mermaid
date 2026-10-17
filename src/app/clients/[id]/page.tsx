@@ -2,9 +2,7 @@ import { redirect, notFound } from 'next/navigation';
 import { getSessionEmail } from '@/lib/auth/session';
 import { getClientWorkspace } from '@/features/clients/queries';
 import { updateClient, deleteClientAndReturn, rotatePortalToken, revokePortalToken } from '@/features/clients/actions';
-import { CLIENT_STATUS_LABEL, clientWorkTypes, type ClientStatus } from '@/features/clients/types';
-import { collectCustomTags, workTypeColor, workTypeLabel } from '@/features/clients/work-types';
-import { getClients } from '@/features/clients/queries';
+import { CLIENT_STATUS_LABEL, WORK_TYPE_COLOR, WORK_TYPE_LABEL, clientWorkTypes, type ClientStatus } from '@/features/clients/types';
 import { addMeeting, updateMeetingNotes, followUpToTask, deleteMeeting } from '@/features/meetings/actions';
 import { createInvoiceAndOpen, createQuoteAndOpen, markInvoicePaid } from '@/features/billing/actions';
 import { grandTotal, STREAM_LABEL } from '@/features/billing/types';
@@ -71,8 +69,7 @@ export default async function ClientWorkspacePage({
   if (!workspace || workspace.client.owner_id !== email) notFound();
 
   const { client, projects, tasks, notes, meetings, invoices, quotes, money: totals, time } = workspace;
-  const [settings, allProjects, allClients] = await Promise.all([getSettings(email), getProjects(), getClients(email)]);
-  const customTags = collectCustomTags(allClients); // tags you've used on other clients, offered as chips
+  const [settings, allProjects] = await Promise.all([getSettings(email), getProjects()]);
   const isMonthly = client.billing_type === 'monthly';
   // The Monthly payments tab only exists for retainer clients.
   const visibleTabs = Object.fromEntries(Object.entries(TABS).filter(([k]) => k !== 'retainer' || isMonthly));
@@ -103,8 +100,8 @@ export default async function ClientWorkspacePage({
               {CLIENT_STATUS_LABEL[client.status] ?? 'Active'}
             </span>
             {workTypes.map((t) => (
-              <span key={t} className="type-badge" style={{ color: workTypeColor(t), borderColor: workTypeColor(t) }}>
-                <span className="type-dot" style={{ background: workTypeColor(t) }} />{workTypeLabel(t)}
+              <span key={t} className="type-badge" style={{ color: WORK_TYPE_COLOR[t], borderColor: WORK_TYPE_COLOR[t] }}>
+                <span className="type-dot" style={{ background: WORK_TYPE_COLOR[t] }} />{WORK_TYPE_LABEL[t]}
               </span>
             ))}
           </div>
@@ -530,7 +527,7 @@ export default async function ClientWorkspacePage({
             </div>
             <div>
               <label className="field-label">Type of work</label>
-              <WorkTypePicker initial={workTypes} customTags={customTags} />
+              <WorkTypePicker initial={workTypes} />
             </div>
             <BillingFields initial={client} />
             <div className="grid-2-eq">

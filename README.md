@@ -772,20 +772,3 @@ on your machine.
 
 `npm run verify:journal` - 100 checks (logic, data layer, reminder rules, helper generators). It runs in a temp
 directory and never touches `data/db.local.json`.
-
----
-
-## Custom "type of work" tags (Clients)
-
-The *Type of work* chips on a client keep the nine built-ins and now let you add your own:
-click **+ Add tag**, type a name (SEO, Photography, Video editing…) and press Enter. The new tag is
-selected for that client, saved with it, and offered as a chip on every other client from then on.
-A tag disappears from the list once no client uses it.
-
-- Tags are cleaned on save: trimmed, spaces collapsed, max 30 characters, max 20 per client, `<` `>` removed.
-- No duplicates: `seo` becomes the `SEO` you already use, and typing "web development" selects the built-in.
-- Colours for custom tags are derived from their text, so a tag looks the same everywhere.
-- The assistant's `create_client` tool accepts custom labels too.
-- **Supabase:** run `supabase/migrations/015_custom_work_types.sql`. The old column constraint only allowed the
-  nine built-ins, so without it a custom tag fails to save (locally it works regardless).
-- `npm run verify:tags` checks the rules and the picker (44 checks).

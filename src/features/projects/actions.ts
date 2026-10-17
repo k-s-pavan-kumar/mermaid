@@ -195,6 +195,9 @@ export async function deleteProject(id: string): Promise<void> {
       await table<{ id: string }>(t).remove(row.id);
     }
   }
+  // Goal links point at this project; remove them so no goal lists a ghost.
+  const goalLinks = await table<{ id: string; project_id: string }>('goal_projects').where((l) => l.project_id === id);
+  for (const l of goalLinks) await table<{ id: string }>('goal_projects').remove(l.id);
   const tasks = await table<{ id: string; project_id: string | null }>('tasks').where((t) => t.project_id === id);
   for (const t of tasks) {
     await table<{ id: string; project_id: string | null }>('tasks').update(t.id, { project_id: null });
@@ -203,6 +206,7 @@ export async function deleteProject(id: string): Promise<void> {
   await table<Project>('projects').remove(id);
   revalidatePath('/projects');
   revalidatePath('/today');
+  revalidatePath('/goals');
 }
 
 /** Same delete, but used from the project's own page — where staying put

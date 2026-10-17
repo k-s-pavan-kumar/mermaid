@@ -1,7 +1,9 @@
 import { redirect, notFound } from 'next/navigation';
 import { getSessionEmail } from '@/lib/auth/session';
 import { getInvoiceById, getInvoicePayments } from '@/features/billing/queries';
-import { markInvoicePaid, recordInvoicePayment, deleteInvoicePayment, setInvoiceTds, setDocStatus } from '@/features/billing/actions';
+import { markInvoicePaid, recordInvoicePayment, deleteInvoicePayment, setInvoiceTds, setDocStatus, giveSisterShare, removeSisterShare } from '@/features/billing/actions';
+import { getInvoiceShare } from '@/features/daily-finance/set-aside';
+import { DEFAULT_SISTER_PCT } from '@/features/daily-finance/types';
 import { balanceDue, grandTotal } from '@/features/billing/types';
 import { getClientById } from '@/features/clients/queries';
 import { getSettings } from '@/features/settings/queries';
@@ -24,11 +26,12 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
   const invoice = await getInvoiceById(id);
   if (!invoice) notFound();
 
-  const [settings, client, project, payments] = await Promise.all([
+  const [settings, client, project, payments, sisterShare] = await Promise.all([
     getSettings(email),
     invoice.client_id ? getClientById(invoice.client_id) : Promise.resolve(undefined),
     invoice.project_id ? table<Project>('projects').find(invoice.project_id) : Promise.resolve(undefined),
     getInvoicePayments(email, invoice.id),
+    getInvoiceShare(email, invoice.id),
   ]);
 
   const paidSoFar = Math.round(payments.reduce((n, p) => n + p.amount, 0) * 100) / 100;
@@ -119,6 +122,61 @@ export default async function InvoicePage({ params }: { params: Promise<{ id: st
             </label>
             <SubmitButton className="btn-ghost" style={{ fontSize: 11.5, padding: '5px 10px' }}>Add payment</SubmitButton>
           </form>
+        )}
+      </div>
+
+      <div className="card" style={{ marginTop: 16 }}>
+        <div className="section-title" style={{ marginTop: 0 }}>
+          <h3>Sister&apos;s share</h3>
+        </div>
+        {sisterShare ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12.5 }}>
+              <b className="mono">{money(sisterShare.amount, invoice.currency)}</b>{' '}
+              <span className="text-muted">
+                ({sisterShare.split_pct}% of {money(paidSoFar, invoice.currency)} received) · in your ledger as an expense
+              </span>
+            </span>
+            <form
+              action={async (fd) => { 'use server'; await giveSisterShare(fd); }}
+              style={{ display: 'flex', alignItems: 'center', gap: 6 }}
+            >
+              <input type="hidden" name="invoice_id" value={invoice.id} />
+              <input name="pct" type="number" min={0.01} max={100} step="0.01" defaultValue={sisterShare.split_pct ?? DEFAULT_SISTER_PCT}
+                style={{ width: 70, fontSize: 12.5, padding: '4px 8px' }} aria-label="Percent" />
+              <span style={{ fontSize: 12.5 }}>%</span>
+              <SubmitButton className="btn-ghost" style={{ fontSize: 11.5, padding: '4px 9px' }}>Change</SubmitButton>
+            </form>
+            <ActionButton
+              action={async () => { 'use server'; await removeSisterShare(invoice.id); }}
+              className="btn-link"
+              confirm="Remove the sister's share from your ledger for this invoice?"
+              pendingLabel="…"
+            >
+              Remove
+            </ActionButton>
+          </div>
+        ) : paidSoFar > 0 ? (
+          <form
+            action={async (fd) => { 'use server'; await giveSisterShare(fd); }}
+            style={{ display: 'flex', alignItems: 'flex-end', gap: 8, flexWrap: 'wrap' }}
+          >
+            <input type="hidden" name="invoice_id" value={invoice.id} />
+            <label style={{ fontSize: 12.5 }}>
+              Percent of what you received
+              <br />
+              <input name="pct" type="number" min={0.01} max={100} step="0.01" defaultValue={DEFAULT_SISTER_PCT}
+                style={{ width: 110, fontSize: 12.5, padding: '4px 8px' }} required />
+            </label>
+            <SubmitButton className="btn-ghost" style={{ fontSize: 11.5, padding: '5px 10px' }}>Give sister&apos;s share</SubmitButton>
+            <span className="text-muted" style={{ fontSize: 11.5 }}>
+              Optional — only for this invoice. Posts an expense to Daily Finance; nothing happens unless you press it.
+            </span>
+          </form>
+        ) : (
+          <span className="text-muted" style={{ fontSize: 12.5 }}>
+            Record a payment first — the share is taken from what you received. Optional, and never automatic.
+          </span>
         )}
       </div>
 

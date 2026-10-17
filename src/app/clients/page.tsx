@@ -2,8 +2,7 @@ import { redirect } from 'next/navigation';
 import { getSessionEmail } from '@/lib/auth/session';
 import { getClients } from '@/features/clients/queries';
 import { createClient } from '@/features/clients/actions';
-import { CLIENT_STATUS_LABEL, clientWorkTypes, type ClientStatus } from '@/features/clients/types';
-import { collectCustomTags, workTypeColor, workTypeLabel } from '@/features/clients/work-types';
+import { CLIENT_STATUS_LABEL, WORK_TYPE_COLOR, WORK_TYPE_LABEL, clientWorkTypes, type ClientStatus } from '@/features/clients/types';
 import { Shell } from '@/components/Shell';
 import { SubmitButton } from '@/components/SubmitButton';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
@@ -44,7 +43,7 @@ export default async function ClientsPage() {
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2px 10px', marginTop: 3 }}>
                   {clientWorkTypes(c).map((t) => (
                     <span key={t} className="text-muted" style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>
-                      <span className="type-dot" style={{ background: workTypeColor(t) }} />{workTypeLabel(t)}
+                      <span className="type-dot" style={{ background: WORK_TYPE_COLOR[t] }} />{WORK_TYPE_LABEL[t]}
                     </span>
                   ))}
                 </div>
@@ -87,7 +86,7 @@ export default async function ClientsPage() {
         </div>
         <div>
           <label className="field-label">Type of work</label>
-          <WorkTypePicker customTags={collectCustomTags(clients)} />
+          <WorkTypePicker />
         </div>
         <BillingFields />
         <div className="grid-2-eq">

@@ -63,7 +63,8 @@ export async function getIncomeByStream(ownerId: string): Promise<
     const acc = streams.get(key) ?? { invoiced: 0, paid: 0 };
     const total = grandTotal(inv);
     if (inv.status !== 'draft') acc.invoiced += total;
-    if (inv.status === 'paid' || inv.status === 'partial') acc.paid += Math.min(total, paidTotals.get(inv.id) ?? 0);
+    if (inv.status === 'paid') acc.paid += total;
+    else if (inv.status === 'partial') acc.paid += Math.min(total, paidTotals.get(inv.id) ?? 0);
     streams.set(key, acc);
   }
 

@@ -5,9 +5,9 @@ import { redirect } from 'next/navigation';
 import crypto from 'crypto';
 import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
-import type { BillingType, Client, ClientStatus } from './types';
+import type { BillingType, Client, ClientStatus, WorkType } from './types';
 import { todayIso } from '@/lib/tz/today';
-import { collectCustomTags, normalizeWorkTypes } from './work-types';
+import { WORK_TYPE_LABEL } from './types';
 import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
@@ -16,14 +16,14 @@ async function requireOwner(): Promise<string> {
   return email;
 }
 
-/** Built-ins plus the user's own tags. Matching against the tags they already use
- *  keeps one spelling ("SEO", never "seo" next to it). */
-async function readWorkTypes(formData: FormData, owner: string): Promise<string[]> {
-  const mine = await table<Client>('clients').where((c) => c.owner_id === owner);
-  return normalizeWorkTypes(formData.getAll('work_types'), collectCustomTags(mine));
+function readWorkTypes(formData: FormData): WorkType[] {
+  return formData
+    .getAll('work_types')
+    .map(String)
+    .filter((v): v is WorkType => v in WORK_TYPE_LABEL);
 }
 
-function fields(formData: FormData, work_types: string[]) {
+function fields(formData: FormData) {
   const costRaw = String(formData.get('project_cost') ?? '').trim();
   const billing_type: BillingType = String(formData.get('billing_type') ?? '') === 'monthly' ? 'monthly' : 'project';
   const monthly = billing_type === 'monthly';
@@ -48,7 +48,7 @@ function fields(formData: FormData, work_types: string[]) {
     phone: String(formData.get('phone') ?? '').trim() || null,
     address: String(formData.get('address') ?? '').trim() || null,
     timezone: String(formData.get('timezone') ?? 'UTC').trim() || 'UTC',
-    work_types,
+    work_types: readWorkTypes(formData),
     status: (String(formData.get('status') ?? 'active') as ClientStatus),
     notes: String(formData.get('notes') ?? '').trim() || null,
   };
@@ -63,7 +63,7 @@ export async function createClient(formData: FormData): Promise<void> {
     id: newId(),
     owner_id,
     name,
-    ...fields(formData, await readWorkTypes(formData, owner_id)),
+    ...fields(formData),
     portal_token: null,
     created_at: new Date().toISOString(),
   });
@@ -73,11 +73,11 @@ export async function createClient(formData: FormData): Promise<void> {
 }
 
 export async function updateClient(id: string, formData: FormData): Promise<void> {
-  const owner = await requireOwner();
+  await requireOwner();
   const name = String(formData.get('name') ?? '').trim();
   if (!name) return;
 
-  await table<Client>('clients').update(id, { name, ...fields(formData, await readWorkTypes(formData, owner)) });
+  await table<Client>('clients').update(id, { name, ...fields(formData) });
 
   revalidatePath('/clients');
   revalidatePath(`/clients/${id}`);

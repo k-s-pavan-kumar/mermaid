@@ -27,6 +27,7 @@ const db: LocalDB = {
   finance_categories: [],
   finance_category_rules: [],
   finance_obligations: [],
+  finance_investment_log: [],
   bounty_cases: [],
   needs: [],
   courses: [],
@@ -35,6 +36,8 @@ const db: LocalDB = {
   project_status_log: [],
   day_blocks: [],
   journal_entries: [],
+  goals: [],
+  goal_projects: [],
 };
 
 writeDb(db);

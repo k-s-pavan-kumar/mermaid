@@ -6,8 +6,10 @@ import { getSessionEmail } from '@/lib/auth/session';
 import { todayIso } from '@/lib/tz/today';
 import type { FocusSession, Task, DayBlock, DayBlockKind } from './types';
 import { DAY_MIN, addDays, endDate, parseHHMM, spanMinutes } from './dayblocks';
-import { clampDuration, normaliseMinute, MIN_DURATION_MINUTES } from './time';
+import { clampDuration, durationMinutes, normaliseMinute, snapToSlot, MIN_DURATION_MINUTES, MAX_DURATION_MINUTES } from './time';
+import { expandDates, isValidIso, parseTimeInput } from './recurrence';
 import { newId } from '@/lib/id';
+import { pickSeriesToDelete, type SeriesDeleteScope } from './series';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
@@ -29,6 +31,7 @@ export async function addTask(formData: FormData): Promise<void> {
   if (!title) return;
 
   const project_id = String(formData.get('project_id') ?? '').trim() || null;
+  const dueRaw = String(formData.get('due_date') ?? '').trim();
   const now = new Date();
 
   await table<Task>('tasks').insert({
@@ -36,6 +39,7 @@ export async function addTask(formData: FormData): Promise<void> {
     owner_id,
     project_id,
     title,
+    due_date: isValidIso(dueRaw) ? dueRaw : null,
     dump_date: todayIso(),
     scheduled_date: null,
     scheduled_hour: null,
@@ -49,31 +53,95 @@ export async function addTask(formData: FormData): Promise<void> {
   revalidateTaskSurfaces(project_id);
 }
 
-/** Same as addTask, but bound to a project from that project's own to-do
- * list — project_id is fixed by the caller, not a form field. */
+/**
+ * Add a task to a project's to-do list.
+ *
+ * Optional extras on the form:
+ *   - `date` + `start_time` + `end_time` -> the task is placed straight onto
+ *     that day's calendar, and its length is worked out from the two times
+ *     (no separate hours box).
+ *   - `repeat=1` + `repeat_until` + `weekdays` + `skip_dates` -> one task row
+ *     is created per matching day between `date` and `repeat_until`, skipping
+ *     the listed dates. Real rows (not a hidden rule) so each day can be
+ *     ticked off, moved, resized or deleted on its own, and the week/month
+ *     calendar fills in with no extra machinery.
+ *
+ * With none of those fields it behaves exactly as before: an unscheduled
+ * 1h task in the brain dump.
+ */
 export async function addProjectTask(projectId: string, formData: FormData): Promise<void> {
   const owner_id = await requireOwner();
   const title = String(formData.get('title') ?? '').trim();
   if (!title) return;
 
   const now = new Date();
+  const dueRaw = String(formData.get('due_date') ?? '').trim();
+  const dueDate = isValidIso(dueRaw) ? dueRaw : null;
+  const date = String(formData.get('date') ?? '').trim();
+  const startMin = parseTimeInput(String(formData.get('start_time') ?? ''));
+  const endMin = parseTimeInput(String(formData.get('end_time') ?? ''));
 
-  await table<Task>('tasks').insert({
-    id: newId(),
+  const base = {
     owner_id,
     project_id: projectId,
     title,
     dump_date: todayIso(),
-    scheduled_date: null,
-    scheduled_hour: null,
-    scheduled_minute: null,
-    duration_hours: 1,
-    duration_minutes: MIN_DURATION_MINUTES * 2, // 1h default, expressed on the new grid
     done: false,
     created_at: now.toISOString(),
-  });
+  };
+
+  const scheduled = isValidIso(date) && startMin !== null && endMin !== null && endMin > startMin;
+
+  if (!scheduled) {
+    await table<Task>('tasks').insert({
+      id: newId(),
+      ...base,
+      due_date: dueDate,
+      scheduled_date: null,
+      scheduled_hour: null,
+      scheduled_minute: null,
+      duration_hours: 1,
+      duration_minutes: MIN_DURATION_MINUTES * 2, // 1h default, expressed on the new grid
+    });
+    revalidateTaskSurfaces(projectId);
+    return;
+  }
+
+  // The grid is half-hourly, so the start snaps to :00/:30 and the length is
+  // the gap between the two times, clamped to 30 min .. 8 h.
+  const start = Math.min(snapToSlot(startMin), 23 * 60 + 30);
+  const minutes = Math.max(MIN_DURATION_MINUTES, Math.min(MAX_DURATION_MINUTES, snapToSlot(endMin - startMin)));
+  const hour = Math.floor(start / 60);
+  const minute = normaliseMinute(start % 60);
+
+  const repeat = formData.get('repeat') === '1';
+  let dates = [date];
+  if (repeat) {
+    const until = String(formData.get('repeat_until') ?? '').trim();
+    const weekdays = formData.getAll('weekdays').map(Number);
+    const skip = String(formData.get('skip_dates') ?? '').split(/[\s,]+/).filter(Boolean);
+    if (!isValidIso(until) || until < date || weekdays.length === 0) return; // an end date is required
+    dates = expandDates({ start: date, end: until, weekdays, skip }).dates;
+    if (dates.length === 0) return;
+  }
+
+  const series_id = repeat ? newId() : null;
+  for (const d of dates) {
+    await table<Task>('tasks').insert({
+      id: newId(),
+      ...base,
+      series_id,
+      due_date: repeat ? null : dueDate,
+      scheduled_date: d,
+      scheduled_hour: hour,
+      scheduled_minute: minute,
+      duration_hours: Math.max(1, Math.min(8, Math.ceil(minutes / 60))),
+      duration_minutes: minutes,
+    });
+  }
 
   revalidateTaskSurfaces(projectId);
+  revalidatePath('/calendar');
 }
 
 /**
@@ -166,8 +234,17 @@ export async function unscheduleTask(id: string): Promise<void> {
 
 export async function toggleTaskDone(id: string, done: boolean): Promise<void> {
   await requireOwner();
-  const updated = await table<Task>('tasks').update(id, { done });
+  // Ticking a scheduled task done with nothing logged yet credits its planned
+  // length as hours worked, so a daily 9-10 class doesn't need the hours typed
+  // in by hand. Anything already logged (typed or from the timer) is kept.
+  const existing = await table<Task>('tasks').find(id);
+  const patch: Partial<Task> = { done };
+  if (done && existing && !(existing.logged_minutes ?? 0) && existing.scheduled_date) {
+    patch.logged_minutes = durationMinutes(existing);
+  }
+  const updated = await table<Task>('tasks').update(id, patch);
   revalidateTaskSurfaces(updated?.project_id ?? null);
+  if (patch.logged_minutes && updated?.project_id) revalidatePath('/clients', 'layout');
 }
 
 /** Tag or untag a task with a custom Dashboard category — overrides its
@@ -185,6 +262,32 @@ export async function deleteTask(id: string): Promise<void> {
   const existing = await table<Task>('tasks').find(id);
   await table<Task>('tasks').remove(id);
   revalidateTaskSurfaces(existing?.project_id ?? null);
+}
+
+/**
+ * Delete part or all of a Repeat series.
+ *
+ *   - 'this'  : just this one day.
+ *   - 'later' : this day and every later day in the series. Done days are
+ *               kept so hours already worked and logged stay in the totals.
+ *   - 'all'   : every day in the series, done or not.
+ *
+ * A task with no series_id (a one-off) simply deletes itself, whatever the
+ * scope. Scoped to the signed-in owner so a posted id can't reach other rows.
+ */
+export async function deleteTaskSeries(id: string, scope: SeriesDeleteScope = 'later'): Promise<void> {
+  const owner_id = await requireOwner();
+  const anchor = await table<Task>('tasks').find(id);
+  if (!anchor || anchor.owner_id !== owner_id) return;
+
+  const pool = anchor.series_id && scope !== 'this'
+    ? await table<Task>('tasks').where((t) => t.owner_id === owner_id && t.series_id === anchor.series_id)
+    : [anchor];
+  for (const t of pickSeriesToDelete(pool, anchor, scope)) await table<Task>('tasks').remove(t.id);
+
+  revalidateTaskSurfaces(anchor.project_id);
+  revalidatePath('/calendar');
+  if (anchor.project_id) revalidatePath('/clients', 'layout');
 }
 
 /**
@@ -339,4 +442,12 @@ export async function deleteDayBlock(id: string): Promise<void> {
   if (!row || row.owner_id !== owner_id) return;
   await table<DayBlock>('day_blocks').remove(id);
   revalidatePath('/today');
+}
+
+/** Set or clear a task's deadline. An empty value clears it. */
+export async function setTaskDue(id: string, formData: FormData): Promise<void> {
+  await requireOwner();
+  const raw = String(formData.get('due_date') ?? '').trim();
+  const updated = await table<Task>('tasks').update(id, { due_date: isValidIso(raw) ? raw : null });
+  revalidateTaskSurfaces(updated?.project_id ?? null);
 }

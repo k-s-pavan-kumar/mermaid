@@ -7,6 +7,9 @@ import type { BrainDumpGroup, DayLoad } from '../queries';
 import { FocusTimer } from '@/components/FocusTimer';
 import { MonthCalendar } from './MonthCalendar';
 import { DayLog } from './DayLog';
+import { UpNextCard } from './UpNextCard';
+import { DueBadge } from './DueBadge';
+import { DueSoonCard } from './DueSoonCard';
 import { ActionButton } from '@/components/ActionButton';
 import { SubmitButton } from '@/components/SubmitButton';
 import { TYPE_COLOR } from '@/lib/project-colors';
@@ -68,6 +71,10 @@ interface Props {
   brainDumpGroups: BrainDumpGroup[];
   tasks: Task[];
   overdue: Task[];
+  /** Open tasks with a deadline within 2 days (or already past). */
+  dueSoon: Task[];
+  /** Unfinished tasks auto-moved to today on this load. */
+  rolledCount: number;
   dayLoads: Record<string, DayLoad>;
   streak: { days: number; todayMoved: boolean };
   stalled: { id: string; name: string; days: number }[];
@@ -138,7 +145,7 @@ function CategorySelect({
 }
 
 export function TodayClient({
-  date, realToday, brainDumpGroups, tasks, overdue, dayLoads, projects, categories,
+  date, realToday, brainDumpGroups, tasks, overdue, dueSoon, rolledCount, dayLoads, projects, categories,
   streak, stalled, focusMinutesToday,
   addTask, scheduleTask, resizeTask, unscheduleTask, toggleTaskDone, deleteTask, moveTaskToToday,
   moveAllOverdueToToday, setOneThing, setTaskCategory, logFocusSession,
@@ -149,6 +156,8 @@ export function TodayClient({
   // Opens on its own when something is already overdue — that's precisely
   // the case where a day looks empty but isn't.
   const [showCalendar, setShowCalendar] = useState(overdue.length > 0);
+  const [startRequest, setStartRequest] = useState<{ nonce: number; taskId: string | null; minutes: number } | null>(null);
+  const [rolledDismissed, setRolledDismissed] = useState(false);
   const [dragOverSlot, setDragOverSlot] = useState<number | null>(null);
   const [liveDuration, setLiveDuration] = useState<Record<string, number>>({});
   const resizingRef = useRef<{ id: string; startY: number; startDuration: number } | null>(null);
@@ -248,8 +257,38 @@ export function TodayClient({
   const doneCount = dayTasks.filter((t) => t.done).length;
   const candidates = [...dayTasks, ...brainDumpGroups.flatMap((g) => g.tasks)].filter((t) => !t.done);
 
+  const isToday = date === realToday;
+  function startOn(task: Task, minutes: number) {
+    setStartRequest({ nonce: Date.now(), taskId: task.id, minutes });
+    document.getElementById('focus-timer')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+  const markDone = (id: string) => toggleTaskDone(id, true);
+  const projectName = (id: string | null) => (id ? projectById.get(id)?.name ?? null : null);
+
   return (
     <>
+    {isToday && rolledCount > 0 && !rolledDismissed && (
+      <div className="card" style={{ marginBottom: 12, padding: '9px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, fontSize: 13 }}>
+        <span>↪ Moved {rolledCount} unfinished task{rolledCount === 1 ? '' : 's'} from earlier days to today. No guilt — just a fresh start.</span>
+        <button type="button" className="btn-link" onClick={() => setRolledDismissed(true)}>OK</button>
+      </div>
+    )}
+
+    {isToday && (
+      <>
+        <UpNextCard
+          todayTasks={tasks}
+          dueSoon={dueSoon}
+          dump={brainDumpGroups.flatMap((g) => g.tasks)}
+          oneThingId={tasks.find((t) => t.focus_date === date)?.id ?? null}
+          today={realToday}
+          onStart={startOn}
+          markDone={markDone}
+        />
+        <DueSoonCard tasks={dueSoon} today={realToday} projectName={projectName} markDone={markDone} />
+      </>
+    )}
+
     <div className="momentum-bar">
       <span className="mo-item">
         <img src={`/mascot/${streak.days > 0 ? 'celebrate' : 'idle'}.png`} alt="" width={30} height={30} />
@@ -334,6 +373,9 @@ export function TodayClient({
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             )}
+            <label className="text-muted" style={{ fontSize: 11.5, display: 'flex', alignItems: 'center', gap: 6 }}>
+              Deadline <input name="due_date" type="date" style={{ fontSize: 12 }} aria-label="Deadline (optional)" />
+            </label>
             <SubmitButton className="btn-inline" pendingLabel="Adding…" style={{ width: 'fit-content' }}>Add</SubmitButton>
           </form>
 
@@ -356,7 +398,10 @@ export function TodayClient({
                     <ActionButton action={() => deleteTask(t.id)} className="btn-link" style={{ color: '#aaa' }} aria-label="Delete task" pendingLabel="…">×</ActionButton>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <ProjectBadge project={projectById.get(t.project_id ?? '')} />
+                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                      <ProjectBadge project={projectById.get(t.project_id ?? '')} />
+                      {t.due_date && <DueBadge due={t.due_date} today={realToday} />}
+                    </span>
                     <CategorySelect task={t} categories={categories} setTaskCategory={setTaskCategory} />
                   </div>
                 </div>
@@ -372,6 +417,7 @@ export function TodayClient({
         <FocusTimer
           tasks={candidates.slice(0, 20).map((t) => ({ id: t.id, title: t.title, project_id: t.project_id }))}
           logSession={logFocusSession}
+          startRequest={startRequest}
         />
       </div>
 
