@@ -13,23 +13,25 @@ export interface Tag {
   name: string;
   color: string;
   is_field: boolean;
-  /** 'tpn' marks the TPN audit field: its page is /tpn-audits and its goals never mix with other fields. */
-  special: 'tpn' | null;
+  /** 'tpn' / 'bounty' mark fields that already have their own page (/tpn-audits, /bounty-pipeline); their goals never mix with other fields. */
+  special: 'tpn' | 'bounty' | null;
   sort_order: number;
   created_at: string;
 }
 
 export const TAG_COLORS = ['#5F3DEB', '#D99A18', '#00A0A6', '#B8449B', '#DE7438', '#2B94C9', '#3C8D5A', '#E23B6B', '#5C6180'] as const;
 
-export const DEFAULT_FIELDS: { name: string; color: string; special: 'tpn' | null }[] = [
+export const DEFAULT_FIELDS: { name: string; color: string; special: 'tpn' | 'bounty' | null }[] = [
   { name: 'SaaS', color: '#5F3DEB', special: null },
   { name: 'Gaming', color: '#B8449B', special: null },
-  { name: 'Publishing', color: '#D99A18', special: null },
+  { name: 'Book Publishing', color: '#D99A18', special: null },
   { name: 'TPN Auditing', color: '#2B94C9', special: 'tpn' },
-  { name: 'Teaching', color: '#3C8D5A', special: null },
+  { name: 'Bug Bounty', color: '#E23B6B', special: 'bounty' },
   { name: 'Digital Marketing', color: '#DE7438', special: null },
-  { name: 'Client Work', color: '#00A0A6', special: null },
 ];
+
+/** Sidebar order for the well-known fields; anything else follows by its own sort order. */
+export const FIELD_ORDER = ['saas', 'gaming', 'book publishing', 'publishing', 'tpn auditing', 'bug bounty', 'digital marketing'];
 
 export const MAX_TAG_LENGTH = 30;
 
@@ -41,5 +43,18 @@ export const isHex = (c: string) => /^#[0-9a-fA-F]{6}$/.test(c);
 
 /** Where a field's page lives. */
 export function fieldHref(t: Pick<Tag, 'id' | 'special'>): string {
-  return t.special === 'tpn' ? '/tpn-audits' : `/fields/${t.id}`;
+  return t.special === 'tpn' ? '/tpn-audits' : t.special === 'bounty' ? '/bounty-pipeline' : `/fields/${t.id}`;
+}
+
+/** The project type a new project in this field starts as. */
+export function fieldProjectType(t: Pick<Tag, 'name' | 'special'>): string {
+  if (t.special === 'tpn') return 'assess';
+  if (t.special === 'bounty') return 'bounty';
+  const n = t.name.toLowerCase();
+  if (n.includes('saas')) return 'web';
+  if (n.includes('gam')) return 'game';
+  if (n.includes('publish') || n.includes('book')) return 'content';
+  if (n.includes('market')) return 'marketing';
+  if (n.includes('teach')) return 'teaching';
+  return 'internal';
 }

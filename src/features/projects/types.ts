@@ -29,6 +29,9 @@ export interface Project {
   owner_id: string;
   /** The Field (tag) this project belongs to — shown on that field's page. */
   field_id?: string | null;
+  /** The Product family this project is part of, and which piece it is (saas/app/book/game/marketing). */
+  product_id?: string | null;
+  product_role?: string | null;
   name: string;
   /**
    * Primary type — always equal to types[0]. Kept as its own column so

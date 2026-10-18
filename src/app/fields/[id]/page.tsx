@@ -1,10 +1,13 @@
 import { notFound, redirect } from 'next/navigation';
 import { getSessionEmail } from '@/lib/auth/session';
 import { Shell } from '@/components/Shell';
-import { SubmitButton } from '@/components/SubmitButton';
 import { GoalsBoard } from '@/features/goals/components/GoalsBoard';
 import { getFieldsSafe } from '@/features/tags/queries';
-import { setProjectField } from '@/features/tags/actions';
+import { FieldProjects } from '@/features/tags/components/FieldProjects';
+import { loadTargetData } from '@/features/targets/queries';
+import { FieldTargetCards } from '@/features/targets/components/FieldTargetCards';
+import { nowIndex, summarise } from '@/features/targets/compute';
+import { todayIso } from '@/lib/tz/today';
 import { getProjects } from '@/features/projects/queries';
 import { getClients } from '@/features/clients/queries';
 import { clientWorkTypes } from '@/features/clients/types';
@@ -24,43 +27,27 @@ export default async function FieldPage({
   const field = fields.find((f) => f.id === id);
   if (!field) notFound();
   if (field.special === 'tpn') redirect('/tpn-audits');
+  if (field.special === 'bounty') redirect('/bounty-pipeline');
 
-  const [projects, clients] = await Promise.all([getProjects(), getClients(email)]);
-  const mine = projects.filter((p) => p.field_id === field.id);
-  const spare = projects.filter((p) => !p.field_id);
+  const today = todayIso();
+  const parsed = Number(sp.year);
+  const year = Number.isInteger(parsed) && parsed >= 2000 && parsed <= 2100 ? parsed : Number(today.slice(0, 4));
+  const [projects, clients, targetData] = await Promise.all([getProjects(), getClients(email), loadTargetData(email, year)]);
   const myClients = clients.filter((c) => clientWorkTypes(c).some((t) => t.toLowerCase() === field.name.toLowerCase()));
+  const summary = summarise(targetData.targets.get(field.id) ?? 0, targetData.monthly.get(field.id) ?? Array.from({ length: 12 }, () => 0), nowIndex(year, today));
 
   return (
     <Shell active={`field:${field.id}`} title={field.name} crumb="Fields">
-      <GoalsBoard email={email} year={sp.year} view={sp.view} notice={sp.notice} basePath={`/fields/${field.id}`} scope={{ kind: 'field', field }} fields={fields} />
+      <FieldTargetCards name={field.name} year={year} s={summary} />
 
-      <div className="grid-2-eq" style={{ marginTop: 22, gap: 16, alignItems: 'start' }}>
-        <div className="card">
-          <h3>{field.name} projects</h3>
-          {mine.length === 0 && <p className="text-muted" style={{ fontSize: 13 }}>No projects in this field yet.</p>}
-          {mine.map((p) => (
-            <div key={p.id} className="list-row">
-              <a href={`/projects/${p.id}`} style={{ fontWeight: 600, textDecoration: 'none' }}>{p.name}</a>
-              <span className={`tag ${p.status}`}>{STATUS[p.status]}</span>
-            </div>
-          ))}
-          {spare.length > 0 && (
-            <form action={setProjectField} className="form-row" style={{ marginTop: 12, marginBottom: 0 }}>
-              <input type="hidden" name="field_id" value={field.id} />
-              <select name="project_id" required defaultValue="" aria-label="Project to add">
-                <option value="" disabled>Add an existing project…</option>
-                {spare.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-              <SubmitButton className="btn-ghost" pendingLabel="Adding…">Add</SubmitButton>
-            </form>
-          )}
-        </div>
+      <div className="grid-2-eq" style={{ marginBottom: 24, gap: 16, alignItems: 'start' }}>
+        <FieldProjects field={field} projects={projects} clients={clients} />
 
         <div className="card">
           <h3>{field.name} clients</h3>
           {myClients.length === 0 && (
-            <p className="text-muted" style={{ fontSize: 13 }}>
-              No clients yet. Tick &ldquo;{field.name}&rdquo; under <em>Type of work</em> on a client and they appear here.
+            <p className="text-muted" style={{ fontSize: 13, marginTop: 0 }}>
+              No clients tagged yet. Tick &ldquo;{field.name}&rdquo; under <em>Type of work</em> on a client and they appear here.
             </p>
           )}
           {myClients.map((c) => (
@@ -71,6 +58,9 @@ export default async function FieldPage({
           ))}
         </div>
       </div>
+
+      <h2 style={{ fontFamily: "'Fraunces',serif", fontSize: 18, margin: '0 0 10px' }}>{field.name} goals</h2>
+      <GoalsBoard email={email} year={sp.year} view={sp.view} notice={sp.notice} basePath={`/fields/${field.id}`} scope={{ kind: 'field', field }} fields={fields} />
     </Shell>
   );
 }

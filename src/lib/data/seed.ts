@@ -40,6 +40,8 @@ const db: LocalDB = {
   goal_projects: [],
   audits: [],
   tags: [],
+  products: [],
+  field_targets: [],
 };
 
 writeDb(db);

@@ -19,6 +19,8 @@ export interface Goal {
   status: GoalStatus;
   /** The Field (tag) this goal belongs to; null = a general goal. Targets never cross fields. */
   field_id?: string | null;
+  /** The Product (a SaaS and its app, book, game and marketing) this goal belongs to, if any. */
+  product_id?: string | null;
   /** Optional numeric yearly target, e.g. 12 with unit 'audits' or 500000 with unit '₹'. */
   target_value?: number | null;
   unit?: string | null;

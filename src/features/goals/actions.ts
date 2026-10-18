@@ -4,9 +4,9 @@ import { revalidatePath } from 'next/cache';
 import { redirect } from 'next/navigation';
 import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
-import { TYPE_COLOR } from '@/lib/project-colors';
+import { createProjectRecord } from '@/features/projects/service';
 import { newId } from '@/lib/id';
-import type { Project, ProjectType } from '@/features/projects/types';
+import type { Project } from '@/features/projects/types';
 import type { Goal, GoalProject, GoalStatus } from './types';
 import { monthKey } from './types';
 
@@ -19,13 +19,14 @@ async function requireOwner(): Promise<string> {
 /** Where the form was submitted from, so we go back to the same page. Only our own pages are allowed. */
 function returnPath(fd: FormData): string {
   const r = String(fd.get('return_to') ?? '');
-  return r === '/goals' || r === '/tpn-audits' || /^\/fields\/[0-9a-f-]{36}$/.test(r) ? r : '/goals';
+  return r === '/goals' || r === '/tpn-audits' || /^\/(fields|products)\/[0-9a-f-]{36}$/.test(r) ? r : '/goals';
 }
 
 function refresh(projectId?: string | null) {
   revalidatePath('/goals');
   revalidatePath('/tpn-audits');
   revalidatePath('/fields/[id]', 'page');
+  revalidatePath('/products/[id]', 'page');
   revalidatePath('/projects');
   if (projectId) revalidatePath(`/projects/${projectId}`);
 }
@@ -55,30 +56,10 @@ async function attach(owner: string, goal: Goal, projectId: string, mm: string):
   });
 }
 
-/**
- * Create a project for a goal. Your live database may be older than the app
- * and reject a project type it doesn't know yet ('teaching', 'marketing' came
- * with migration 009), which made the whole save crash. If the chosen type is
- * refused, fall back to 'internal' — a type every version of the schema has —
- * and report that it happened so the page can say so. Any other failure
- * propagates to the caller.
- */
 async function makeProject(
-  owner: string, name: string, type: string, description: string | null, fieldId: string | null = null,
+  owner: string, name: string, type: string, description: string | null, fieldId: string | null = null, productId: string | null = null,
 ): Promise<{ project: Project; usedFallback: boolean }> {
-  const wanted = (type in TYPE_COLOR ? type : 'internal') as ProjectType;
-  const insert = (t: ProjectType) => table<Project>('projects').insert({
-    id: newId('proj'), owner_id: owner, name, type: t, types: [t], client_id: null,
-    status: 'idea', description, created_at: new Date().toISOString(),
-    ...(fieldId ? { field_id: fieldId } : {}),
-  });
-  try {
-    return { project: await insert(wanted), usedFallback: false };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    if (wanted === 'internal' || !/projects_types?_check/.test(msg)) throw err;
-    return { project: await insert('internal'), usedFallback: true };
-  }
+  return createProjectRecord(owner, { name, type, description, fieldId, productId });
 }
 
 /**
@@ -98,6 +79,12 @@ export async function addGoal(formData: FormData): Promise<void> {
     const tag = await table<{ id: string; owner_id: string }>('tags').find(fieldRaw);
     if (tag && tag.owner_id === owner) field_id = tag.id;
   }
+  const productRaw = String(formData.get('product_id') ?? '').trim();
+  let product_id: string | null = null;
+  if (productRaw) {
+    const prod = await table<{ id: string; owner_id: string }>('products').find(productRaw);
+    if (prod && prod.owner_id === owner) product_id = prod.id;
+  }
   const targetRaw = String(formData.get('target_value') ?? '').trim();
   const target = targetRaw ? Number(targetRaw) : NaN;
   const back = returnPath(formData);
@@ -107,13 +94,14 @@ export async function addGoal(formData: FormData): Promise<void> {
     description: String(formData.get('description') ?? '').trim().slice(0, 500) || null,
     status: 'active', created_at: new Date().toISOString(),
     ...(field_id ? { field_id } : {}),
+    ...(product_id ? { product_id } : {}),
     ...(Number.isFinite(target) && target > 0 ? { target_value: target, unit: String(formData.get('unit') ?? '').trim().slice(0, 16) || null, progress_value: 0 } : {}),
   });
 
   let notice = '';
   if (formData.get('create_project') === 'on') {
     try {
-      const { project, usedFallback } = await makeProject(owner, title, String(formData.get('type') ?? 'internal'), goal.description, field_id);
+      const { project, usedFallback } = await makeProject(owner, title, String(formData.get('type') ?? 'internal'), goal.description, field_id, product_id);
       await attach(owner, goal, project.id, String(formData.get('month') ?? ''));
       if (usedFallback) notice = 'type';
     } catch {
@@ -173,7 +161,7 @@ export async function createProjectForGoal(goalId: string, formData: FormData): 
   let notice = '';
   let projectId: string | null = null;
   try {
-    const made = await makeProject(owner, name, String(formData.get('type') ?? 'internal'), null, goal.field_id ?? null);
+    const made = await makeProject(owner, name, String(formData.get('type') ?? 'internal'), null, goal.field_id ?? null, goal.product_id ?? null);
     projectId = made.project.id;
     await attach(owner, goal, made.project.id, String(formData.get('month') ?? ''));
     if (made.usedFallback) notice = 'type';

@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
 import { newId } from '@/lib/id';
-import { TAG_COLORS, isHex, normaliseTagName, type Tag } from './types';
+import { TAG_COLORS, fieldProjectType, isHex, normaliseTagName, type Tag } from './types';
+import { createProjectRecord } from '@/features/projects/service';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
@@ -117,4 +118,36 @@ export async function setProjectField(formData: FormData): Promise<void> {
   revalidatePath('/tpn-audits');
   revalidatePath(`/projects/${projectId}`);
   revalidatePath('/projects');
+}
+
+/**
+ * New project inside a field. Pick a client and it becomes paid client work
+ * (the 'client' type is what unlocks quotes and invoices); leave the client
+ * empty and it is simply your own project. Form: name, client_id.
+ */
+export async function createFieldProject(fieldId: string, formData: FormData): Promise<void> {
+  const owner = await requireOwner();
+  const field = await table<Tag>('tags').find(fieldId);
+  const name = String(formData.get('name') ?? '').trim().slice(0, 120);
+  if (!field || field.owner_id !== owner || !field.is_field || !name) return;
+
+  let clientId: string | null = null;
+  const clientRaw = String(formData.get('client_id') ?? '').trim();
+  if (clientRaw) {
+    const c = await table<{ id: string; owner_id: string }>('clients').find(clientRaw);
+    if (c && c.owner_id === owner) clientId = c.id;
+  }
+  const fieldType = fieldProjectType(field);
+  await createProjectRecord(owner, {
+    name,
+    type: clientId ? 'client' : fieldType,
+    extraTypes: clientId ? [fieldType] : [],
+    clientId,
+    fieldId: field.id,
+  });
+  refresh();
+  revalidatePath('/projects');
+  revalidatePath('/fields/[id]', 'page');
+  revalidatePath('/tpn-audits');
+  revalidatePath('/bounty-pipeline');
 }

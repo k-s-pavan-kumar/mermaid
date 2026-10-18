@@ -10,6 +10,7 @@ import { GOAL_STATUS_LABEL, MONTH_NAMES, MONTH_SHORT, monthLabel } from '@/featu
 import type { Goal, GoalProject } from '@/features/goals/types';
 import type { Project } from '@/features/projects/types';
 import type { Tag } from '@/features/tags/types';
+import type { Product } from '@/features/products/types';
 import { todayIso } from '@/lib/tz/today';
 import { AUDIT_STAGE_LABEL, isAuditComplete, type Audit } from '@/features/audits/types';
 
@@ -35,10 +36,10 @@ const fmtNum = (n: number) => n.toLocaleString('en-IN', { maximumFractionDigits:
  * a field's page only ever shows that field's goals, and TPN's goals are kept
  * out of the general view entirely.
  */
-export type GoalsScope = { kind: 'all' } | { kind: 'field'; field: Tag };
+export type GoalsScope = { kind: 'all' } | { kind: 'field'; field: Tag } | { kind: 'product'; product: Product };
 
 export async function GoalsBoard({
-  email, year: yearParam, view: viewParam, notice, basePath, scope, fields, audits = [],
+  email, year: yearParam, view: viewParam, notice, basePath, scope, fields, audits = [], products = [],
 }: {
   email: string;
   year?: string;
@@ -51,6 +52,8 @@ export async function GoalsBoard({
   fields: Tag[];
   /** TPN audits to show under their goal (only passed on the TPN page). */
   audits?: Audit[];
+  /** Products, so a goal on the general page can show which product it belongs to. */
+  products?: Product[];
 }) {
   const today = todayIso();
   const thisYear = Number(today.slice(0, 4));
@@ -62,7 +65,10 @@ export async function GoalsBoard({
 
 
   const tpnId = fields.find((f) => f.special === 'tpn')?.id ?? null;
-  const inScope = (g: Goal) => scope.kind === 'field' ? g.field_id === scope.field.id : !(tpnId && g.field_id === tpnId);
+  const inScope = (g: Goal) =>
+    scope.kind === 'field' ? g.field_id === scope.field.id
+    : scope.kind === 'product' ? g.product_id === scope.product.id
+    : !(tpnId && g.field_id === tpnId);
   const [allGoals, projects] = await Promise.all([getGoals(email), getProjects()]);
   const scoped = allGoals.filter(inScope);
   const years = [...new Set(scoped.map((g) => g.year))];
@@ -77,6 +83,8 @@ export async function GoalsBoard({
   const boardAudits = audits.filter((a) => a.goal_id && goalIdSet.has(a.goal_id));
   const pickable = fields.filter((f) => f.special !== 'tpn');
   const fixedField = scope.kind === 'field' ? scope.field : null;
+  const fixedProduct = scope.kind === 'product' ? scope.product : null;
+  const productById = new Map(products.map((p) => [p.id, p]));
 
   const yearChips = [...new Set([...years, thisYear, thisYear + 1, year])].sort((a, b) => a - b);
   const done = goals.filter((g) => g.status === 'done').length;
@@ -115,10 +123,11 @@ export async function GoalsBoard({
           <input type="hidden" name="year" value={year} />
           <input type="hidden" name="return_to" value={basePath} />
           {fixedField && <input type="hidden" name="field_id" value={fixedField.id} />}
-          <input name="title" placeholder={fixedField ? `A ${year} target for ${fixedField.name}, e.g. Launch 2 releases` : 'e.g. Ship 4 Figma plugins'} required style={{ width: '100%' }} />
+          {fixedProduct && <input type="hidden" name="product_id" value={fixedProduct.id} />}
+          <input name="title" placeholder={fixedField ? `A ${year} target for ${fixedField.name}, e.g. Launch 2 releases` : fixedProduct ? `A ${year} goal for ${fixedProduct.name}, e.g. Launch the book` : 'e.g. Ship 4 Figma plugins'} required style={{ width: '100%' }} />
           <input name="description" placeholder="Why it matters / what done looks like (optional)" style={{ width: '100%' }} />
           <div className="form-row" style={{ marginBottom: 0 }}>
-            {!fixedField && (
+            {!fixedField && !fixedProduct && (
               <select name="field_id" defaultValue="" aria-label="Field">
                 <option value="">No field (general goal)</option>
                 {pickable.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
@@ -173,6 +182,11 @@ export async function GoalsBoard({
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontFamily: "'Fraunces',serif", fontSize: 17, textDecoration: g.status === 'done' ? 'line-through' : 'none' }}>{g.title}</div>
                 {g.description && <div className="text-muted" style={{ fontSize: 12.5, marginTop: 2 }}>{g.description}</div>}
+                {scope.kind === 'all' && g.product_id && productById.get(g.product_id) && (
+                  <a href={`/products/${g.product_id}`} className="type-badge" style={{ marginTop: 6, marginRight: 6, display: 'inline-flex', textDecoration: 'none' }}>
+                    ◎ {productById.get(g.product_id)!.name}
+                  </a>
+                )}
                 {scope.kind === 'all' && g.field_id && fieldById.get(g.field_id) && (
                   <a href={fieldById.get(g.field_id)!.special === 'tpn' ? '/tpn-audits' : `/fields/${g.field_id}`} className="type-badge"
                      style={{ marginTop: 6, display: 'inline-flex', color: fieldById.get(g.field_id)!.color, borderColor: fieldById.get(g.field_id)!.color, textDecoration: 'none' }}>

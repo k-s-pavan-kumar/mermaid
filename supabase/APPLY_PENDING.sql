@@ -136,3 +136,45 @@ create index if not exists goals_field_idx on goals(owner_id, field_id, year);
 alter table projects add column if not exists field_id uuid references tags(id) on delete set null;
 create index if not exists projects_field_idx on projects(owner_id, field_id);
 
+-- (021_products)
+-- Products: one SaaS and the app, book, game and marketing built around it.
+-- Run after 020. Safe to run more than once.
+create table if not exists products (
+  id          uuid primary key default uuid_generate_v4(),
+  owner_id    uuid not null references auth.users(id) default auth.uid(),
+  name        text not null,
+  description text,
+  created_at  timestamptz not null default now()
+);
+alter table products enable row level security;
+drop policy if exists "owner full access" on products;
+create policy "owner full access" on products for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+alter table projects add column if not exists product_id uuid references products(id) on delete set null;
+alter table projects add column if not exists product_role text
+  check (product_role in ('saas','app','book','game','marketing','other'));
+create index if not exists projects_product_idx on projects(owner_id, product_id);
+
+alter table goals add column if not exists product_id uuid references products(id) on delete set null;
+create index if not exists goals_product_idx on goals(owner_id, product_id, year);
+
+-- (022_field_targets)
+-- Yearly money targets per field, and the Bug Bounty field. Run after 021.
+-- Safe to run more than once.
+alter table tags drop constraint if exists tags_special_check;
+alter table tags add constraint tags_special_check check (special in ('tpn','bounty'));
+
+create table if not exists field_targets (
+  id          uuid primary key default uuid_generate_v4(),
+  owner_id    uuid not null references auth.users(id) default auth.uid(),
+  field_id    uuid not null references tags(id) on delete cascade,
+  year        int  not null check (year between 2000 and 2100),
+  amount      numeric not null check (amount >= 0),
+  created_at  timestamptz not null default now(),
+  unique (field_id, year)
+);
+create index if not exists field_targets_owner_idx on field_targets(owner_id, year);
+alter table field_targets enable row level security;
+drop policy if exists "owner full access" on field_targets;
+create policy "owner full access" on field_targets for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+

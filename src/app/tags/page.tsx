@@ -28,6 +28,7 @@ export default async function TagsPage() {
         <span className="type-dot" style={{ background: t.color, margin: 0 }} />
         <span style={{ fontWeight: 600 }}>{t.name}</span>
         {t.special === 'tpn' && <span className="tag idea">TPN · own goals &amp; page</span>}
+        {t.special === 'bounty' && <span className="tag idea">Bug bounty · own pipeline page</span>}
       </span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         {t.is_field && <a href={fieldHref(t)} className="btn-link" style={{ textDecoration: 'none' }}>Open page</a>}

@@ -3,6 +3,7 @@ import { getSessionEmail } from '@/lib/auth/session';
 import { getBountyCases, getBountyStats } from '@/features/bounty-pipeline/queries';
 import { BountyBoard } from '@/features/bounty-pipeline/components/BountyBoard';
 import { Shell } from '@/components/Shell';
+import { SpecialFieldTop } from '@/features/targets/components/SpecialFieldTop';
 
 function fmt(n: number, ccy = 'INR') {
   return (ccy === 'INR' ? '₹' : ccy + ' ') + Math.round(n).toLocaleString('en-IN');
@@ -15,7 +16,9 @@ export default async function BountyPipelinePage() {
   const [cases, stats] = await Promise.all([getBountyCases(email), getBountyStats(email)]);
 
   return (
-    <Shell active="bounty-pipeline" title="Bug Bounty Pipeline" crumb="Personal">
+    <Shell active="bounty-pipeline" title="Bug Bounty" crumb="Fields">
+      <SpecialFieldTop email={email} special="bounty" />
+
       <p className="text-muted" style={{ marginTop: -8, marginBottom: 20, maxWidth: 520 }}>
         A different shape than client work — no invoice, and the payout stays a guess
         until a program confirms it.

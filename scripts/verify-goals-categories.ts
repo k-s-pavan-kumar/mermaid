@@ -145,16 +145,80 @@ async function main() {
   eq(T.fieldHref({ id: 'abc', special: null }), '/fields/abc', 'field page path');
   eq(T.fieldHref({ id: 'abc', special: 'tpn' }), '/tpn-audits', 'TPN field lives on the TPN page');
   const first = await TQ.getTags('tagger');
-  eq(first.map((t) => t.name), ['SaaS', 'Gaming', 'Publishing', 'TPN Auditing', 'Teaching', 'Digital Marketing', 'Client Work'], 'first visit seeds the starter fields, in order');
+  eq(first.map((t) => t.name), ['SaaS', 'Gaming', 'Book Publishing', 'TPN Auditing', 'Bug Bounty', 'Digital Marketing'], 'first visit seeds the six starter fields, in order');
   eq(first.every((t) => t.is_field), true, 'starter fields are fields');
   eq(first.find((t) => t.special === 'tpn')?.name, 'TPN Auditing', 'TPN field is marked special');
   await Promise.all([TQ.getTags('tagger'), TQ.getTags('tagger'), TQ.getTags('tagger')]);
-  eq((await TQ.getTags('tagger')).length, 7, 'concurrent loads do not double-seed');
+  eq((await TQ.getTags('tagger')).length, 6, 'concurrent loads do not double-seed');
   await TS.ensureTagNames('tagger', ['Photography', 'photography', 'saas', '  ', 'Legal']);
   const after = await TQ.getTags('tagger');
   eq(after.filter((t) => !t.is_field).map((t) => t.name), ['Legal', 'Photography'], 'typed tags become plain tags once, case-insensitively, never duplicating a field');
-  eq((await TQ.getFields('tagger')).length, 7, 'plain tags are not fields');
-  eq((await TQ.getTags('someone-new')).length, 7, 'each owner gets their own starter set');
+  eq((await TQ.getFields('tagger')).length, 6, 'plain tags are not fields');
+  eq((await TQ.getTags('someone-new')).length, 6, 'each owner gets their own starter set');
+
+  // ---- 7. products (SaaS + app + book + game + marketing) ---------------
+  const PR = await import('../src/features/products/types');
+  const PS = await import('../src/features/projects/service');
+  eq(PR.ROLES.map((r) => r.role), ['saas', 'app', 'book', 'game', 'marketing'], 'a product has SaaS, app, book, game and marketing pieces');
+  eq(PR.LANES.map((l) => l.label), ['Tech', 'Education', 'Fun to learn', 'Marketing'], 'four lanes');
+  eq(PR.LANES.flatMap((l) => l.roles).sort(), ['app', 'book', 'game', 'marketing', 'saas'], 'every role sits in exactly one lane');
+  eq(PR.ROLES.find((r) => r.role === 'book')?.fieldName, 'Publishing', 'book files under the Publishing field');
+  eq(PR.productProgress(['done', 'ontrack', 'dropped', 'done']), 67, 'progress ignores dropped pieces');
+  eq(PR.productProgress([]), 0, 'empty product = 0%');
+  eq(PR.isProductRole('game') && !PR.isProductRole('hack'), true, 'role validation');
+  const made = await PS.createProjectRecord('me', { name: 'ISM — Game', type: 'game', productId: 'prod1', productRole: 'game', fieldId: 'f1' });
+  eq([made.project.type, made.project.product_id, made.project.product_role, made.project.field_id, made.usedFallback], ['game', 'prod1', 'game', 'f1', false], 'piece is created with product, role and field');
+  const bad = await PS.createProjectRecord('me', { name: 'x', type: 'nonsense' });
+  eq(bad.project.type, 'internal', 'unknown type falls back to internal');
+
+  // ---- 8. yearly amount targets -----------------------------------------
+  const TG = await import('../src/features/targets/compute');
+  const ctx = {
+    fields: [
+      { id: 'saas', name: 'SaaS', special: null }, { id: 'tpn', name: 'TPN Auditing', special: 'tpn' as const },
+      { id: 'bb', name: 'Bug Bounty', special: 'bounty' as const }, { id: 'mkt', name: 'Digital Marketing', special: null },
+    ],
+    projectField: new Map<string, string | null>([['pSaas', 'saas'], ['pNone', null]]),
+    invoices: new Map([
+      ['i1', { project_id: 'pSaas', client_id: null, stream: 'product' }],
+      ['i2', { project_id: null, client_id: 'c1', stream: 'freelance' }],
+      ['i3', { project_id: null, client_id: null, stream: 'bounty' }],
+      ['i4', { project_id: 'pNone', client_id: 'c2', stream: 'freelance' }],
+    ]),
+    clientTags: new Map([['c1', ['Digital Marketing', 'web']], ['c2', ['photography']]]),
+  };
+  const inc = (id: string, date: string, amount: number, over: Record<string, unknown> = {}) => ({ id, date, amount, source: 'invoice_payment', ...over });
+  eq(TG.fieldForIncome(inc('a', '2026-03-01', 1, { linked_invoice_id: 'i1' }), ctx), 'saas', "invoice on an own project -> that project's field");
+  eq(TG.fieldForIncome(inc('a', '2026-03-01', 1, { linked_project_id: 'pSaas' }), ctx), 'saas', 'entry linked to a project -> its field');
+  eq(TG.fieldForIncome(inc('a', '2026-03-01', 1, { linked_invoice_id: 'i2' }), ctx), 'mkt', "client invoice with no project -> field named in the client's tags");
+  eq(TG.fieldForIncome(inc('a', '2026-03-01', 1, { linked_invoice_id: 'i3' }), ctx), 'bb', 'bounty-stream invoice -> Bug Bounty');
+  eq(TG.fieldForIncome(inc('a', '2026-03-01', 1, { source: 'bounty_payout', linked_bounty_id: 'b1' }), ctx), 'bb', 'bounty payout -> Bug Bounty');
+  eq(TG.fieldForIncome(inc('a', '2026-03-01', 1, { linked_invoice_id: 'i4' }), ctx), null, 'no matching field -> counts nowhere');
+  const monthly = TG.monthlyByField([
+    inc('1', '2026-01-10', 1000, { linked_invoice_id: 'i1' }), inc('2', '2026-01-20', 500, { linked_invoice_id: 'i1' }),
+    inc('3', '2026-03-05', 2000, { linked_invoice_id: 'i1' }), inc('4', '2025-12-31', 9999, { linked_invoice_id: 'i1' }),
+    inc('5', '2026-02-02', 700, { source: 'bounty_payout', linked_bounty_id: 'b' }), inc('6', '2026-02-03', 123, { linked_invoice_id: 'i4' }),
+  ], ctx, 2026);
+  eq(monthly.get('saas')?.slice(0, 4), [1500, 0, 2000, 0], 'received is bucketed by month; other years ignored');
+  eq(monthly.get('bb')?.[1], 700, 'bounty payout in February');
+  TG.addAuditPayments(monthly, 'tpn', [{ paid_amount: 40000, paid_on: '2026-03-15' }, { paid_amount: 5, paid_on: null }, { paid_amount: 9, paid_on: '2025-03-15' }], 2026);
+  eq(monthly.get('tpn')?.[2], 40000, 'TPN audit payments count in the month they were paid');
+  eq(TG.nowIndex(2026, '2026-10-18'), 9, 'current month index');
+  eq([TG.nowIndex(2025, '2026-10-18'), TG.nowIndex(2027, '2026-10-18')], [11, -1], 'past year is complete, future year not started');
+  const sm = TG.summarise(120000, [10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 10000, 0, 0], 9);
+  eq([sm.reached, sm.pending, sm.pct, sm.expectedToDate, sm.gap], [100000, 20000, 83, 100000, 0], 'reached, pending, percent and plan-to-date');
+  eq(sm.neededPerMonth, 6667, 'needed per remaining month: 20,000 over Oct–Dec');
+  eq([sm.cumulative[9], sm.cumulative[10]], [100000, null], 'future months have no running total');
+  eq(TG.summarise(1000, [2000, ...Array(11).fill(0)], 11).pending, 0, 'over-achieving never gives negative pending');
+  eq(TG.summarise(0, Array(12).fill(0), 5).pct, 0, 'no target = 0%');
+  eq(TG.summarise(1200, Array(12).fill(0), 11).neededPerMonth, null, 'no monthly ask once the year is over');
+  eq(TG.sumMonthly([[1, 2, ...Array(10).fill(0)], [3, 4, ...Array(10).fill(0)]]).slice(0, 3), [4, 6, 0], 'all-fields series adds up');
+  eq(T.fieldHref({ id: 'x', special: 'bounty' }), '/bounty-pipeline', 'bug bounty field points at the bounty page');
+  eq([T.fieldProjectType({ name: 'SaaS', special: null }), T.fieldProjectType({ name: 'Gaming', special: null }), T.fieldProjectType({ name: 'Book Publishing', special: null }), T.fieldProjectType({ name: 'Digital Marketing', special: null })], ['web', 'game', 'content', 'marketing'], 'new project in a field starts as the matching type');
+  const tqNew = await TQ.getTags('fresh-owner');
+  eq(tqNew.map((t) => t.name), ['SaaS', 'Gaming', 'Book Publishing', 'TPN Auditing', 'Bug Bounty', 'Digital Marketing'], 'new accounts get the six fields in sidebar order');
+  const withClient = await PS.createProjectRecord('me', { name: 'Acme site', type: 'client', extraTypes: ['web'], clientId: 'c9', fieldId: 'f2' });
+  eq([withClient.project.type, withClient.project.types, withClient.project.client_id], ['client', ['client', 'web'], 'c9'], 'client project keeps client + field type');
 
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');
   process.exit(failed ? 1 : 0);

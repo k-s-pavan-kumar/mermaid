@@ -84,6 +84,9 @@ export default async function ProjectDetailPage({
 
   const [allGoals, goalLinks, allFields] = await Promise.all([getGoals(email), getLinksForProject(email, id), getFieldsSafe(email)]);
   const projectField = allFields.find((f) => f.id === project.field_id);
+  const projectProduct = project.product_id
+    ? await table<{ id: string; name: string; owner_id: string }>('products').find(project.product_id).catch(() => undefined)
+    : undefined;
   const goalById = new Map(allGoals.map((g) => [g.id, g]));
   const projectGoals = goalLinks.filter((l) => goalById.has(l.goal_id));
 
@@ -134,6 +137,14 @@ export default async function ProjectDetailPage({
           </span>
         ))}
       </div>
+
+      {projectProduct && projectProduct.owner_id === email && (
+        <div style={{ marginTop: -2, marginBottom: 8 }}>
+          <a href={`/products/${projectProduct.id}`} className="tag idea" style={{ textDecoration: 'none' }}>
+            Part of {projectProduct.name}{project.product_role ? ` · ${project.product_role}` : ''}
+          </a>
+        </div>
+      )}
 
       {projectGoals.length > 0 && (
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: -2, marginBottom: 10 }}>

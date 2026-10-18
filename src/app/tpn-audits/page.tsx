@@ -9,6 +9,7 @@ import { AUDIT_STAGES, AUDIT_STAGE_LABEL, auditTotals, type Audit, type AuditSta
 import { getGoals } from '@/features/goals/queries';
 import { GoalsBoard } from '@/features/goals/components/GoalsBoard';
 import { getFieldsSafe } from '@/features/tags/queries';
+import { SpecialFieldTop } from '@/features/targets/components/SpecialFieldTop';
 import { MONTH_NAMES, monthLabel } from '@/features/goals/types';
 import type { Goal } from '@/features/goals/types';
 
@@ -51,6 +52,8 @@ export default async function TpnAuditsPage({ searchParams }: { searchParams: Pr
 
   return (
     <Shell active="audits" title="TPN Audits" crumb="Workspace">
+      <SpecialFieldTop email={email} special="tpn" />
+
       <p className="text-muted" style={{ marginTop: 0, fontSize: 13, maxWidth: 640 }}>
         Every TPN audit engagement in one place — client details, where it stands, the quote, the invoice and the payment. This page is separate from Clients and Billing, so audit money never mixes into those totals.
       </p>
