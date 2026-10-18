@@ -120,6 +120,23 @@ async function main() {
   eq(W.customWorkTags([{ work_types: ['web', 'Photography'] }, { work_types: ['photography', 'Legal'] }]), ['Legal', 'Photography'], 'tag library = customs across clients, A-Z, no built-ins');
   eq(W.clientWorkTypes({ work_types: ['web', 'Legal'] }), ['web', 'Legal'], 'custom tags are kept on a client (not filtered out)');
 
+  // ---- 5. TPN audit tracker ---------------------------------------------
+  const A = await import('../src/features/audits/types');
+  const au = (over: Partial<import('../src/features/audits/types').Audit>) => ({
+    id: 'x', owner_id: 'me', client_name: 'C', company: null, email: null, phone: null, scope: null, stage: 'lead',
+    quote_amount: null, quote_sent_on: null, quote_ref: null, invoice_amount: null, invoice_ref: null, invoice_sent_on: null,
+    paid_amount: 0, paid_on: null, audit_date: null, goal_id: null, goal_month: null, notes: null, created_at: '', ...over,
+  }) as import('../src/features/audits/types').Audit;
+  const t = A.auditTotals([
+    au({ stage: 'quoted', quote_amount: 50000 }),
+    au({ stage: 'invoiced', quote_amount: 80000, invoice_amount: 80000, paid_amount: 30000 }),
+    au({ stage: 'paid', quote_amount: 60000, invoice_amount: 60000, paid_amount: 60000 }),
+    au({ stage: 'lost', quote_amount: 99999 }),
+  ]);
+  eq(t, { active: 2, quoted: 190000, invoiced: 140000, received: 90000, outstanding: 50000 }, 'audit totals: lost excluded from quoted/open, outstanding = invoiced - received');
+  eq(A.auditTotals([au({ stage: 'paid', invoice_amount: 100, paid_amount: 150 })]).outstanding, 0, 'overpayment never makes outstanding negative');
+  eq(['lead', 'in_progress', 'report', 'invoiced', 'paid'].map((s) => A.isAuditComplete({ stage: s as never })), [false, false, true, true, true], 'audit counts toward a goal once the report is delivered');
+
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');
   process.exit(failed ? 1 : 0);
 }

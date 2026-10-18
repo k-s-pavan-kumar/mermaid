@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
 import { TYPE_COLOR } from '@/lib/project-colors';
@@ -46,12 +47,29 @@ async function attach(owner: string, goal: Goal, projectId: string, mm: string):
   });
 }
 
-async function makeProject(owner: string, name: string, type: string, description: string | null): Promise<Project> {
-  const t = (type in TYPE_COLOR ? type : 'internal') as ProjectType;
-  return table<Project>('projects').insert({
+/**
+ * Create a project for a goal. Your live database may be older than the app
+ * and reject a project type it doesn't know yet ('teaching', 'marketing' came
+ * with migration 009), which made the whole save crash. If the chosen type is
+ * refused, fall back to 'internal' — a type every version of the schema has —
+ * and report that it happened so the page can say so. Any other failure
+ * propagates to the caller.
+ */
+async function makeProject(
+  owner: string, name: string, type: string, description: string | null,
+): Promise<{ project: Project; usedFallback: boolean }> {
+  const wanted = (type in TYPE_COLOR ? type : 'internal') as ProjectType;
+  const insert = (t: ProjectType) => table<Project>('projects').insert({
     id: newId('proj'), owner_id: owner, name, type: t, types: [t], client_id: null,
     status: 'idea', description, created_at: new Date().toISOString(),
   });
+  try {
+    return { project: await insert(wanted), usedFallback: false };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (wanted === 'internal' || !/projects_types?_check/.test(msg)) throw err;
+    return { project: await insert('internal'), usedFallback: true };
+  }
 }
 
 /**
@@ -71,11 +89,18 @@ export async function addGoal(formData: FormData): Promise<void> {
     status: 'active', created_at: new Date().toISOString(),
   });
 
+  let notice = '';
   if (formData.get('create_project') === 'on') {
-    const project = await makeProject(owner, title, String(formData.get('type') ?? 'internal'), goal.description);
-    await attach(owner, goal, project.id, String(formData.get('month') ?? ''));
+    try {
+      const { project, usedFallback } = await makeProject(owner, title, String(formData.get('type') ?? 'internal'), goal.description);
+      await attach(owner, goal, project.id, String(formData.get('month') ?? ''));
+      if (usedFallback) notice = 'type';
+    } catch {
+      notice = 'project-failed'; // the goal itself is saved; only the auto-created project is missing
+    }
   }
   refresh();
+  redirect(`/goals?year=${year}${notice ? `&notice=${notice}` : ''}`);
 }
 
 export async function setGoalStatus(goalId: string, status: GoalStatus): Promise<void> {
@@ -114,9 +139,18 @@ export async function createProjectForGoal(goalId: string, formData: FormData): 
   const goal = await ownGoal(owner, goalId);
   const name = String(formData.get('name') ?? '').trim().slice(0, 120);
   if (!goal || !name) return;
-  const project = await makeProject(owner, name, String(formData.get('type') ?? 'internal'), null);
-  await attach(owner, goal, project.id, String(formData.get('month') ?? ''));
-  refresh(project.id);
+  let notice = '';
+  let projectId: string | null = null;
+  try {
+    const made = await makeProject(owner, name, String(formData.get('type') ?? 'internal'), null);
+    projectId = made.project.id;
+    await attach(owner, goal, made.project.id, String(formData.get('month') ?? ''));
+    if (made.usedFallback) notice = 'type';
+  } catch {
+    notice = 'project-failed';
+  }
+  refresh(projectId);
+  redirect(`/goals?year=${goal.year}${notice ? `&notice=${notice}` : ''}`);
 }
 
 /** Move a link to another month, or clear it with an empty month (form: month). */

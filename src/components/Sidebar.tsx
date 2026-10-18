@@ -4,6 +4,7 @@ const ICONS: Record<string, React.ReactNode> = {
   today: (<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></>),
   dashboard: (<><path d="M4 19a8 8 0 1116 0" /><path d="M12 19l4.5-6" /><circle cx="12" cy="19" r="1.2" /></>),
   projects: (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M8 4v5" /></>),
+  audits: (<><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z" /><path d="M8.5 12l2.5 2.5L15.5 10" /></>),
   goals: (<><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.4" /></>),
   clients: (<><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" /><circle cx="17.5" cy="9" r="2.6" /><path d="M15 20c.3-2.6 1.9-4.5 4-5" /></>),
   calendar: (<><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></>),
@@ -26,6 +27,7 @@ const LINKS = [
   { href: '/projects', label: 'Projects', key: 'projects', hint: 'g p' },
   { href: '/goals', label: 'Goals', key: 'goals', hint: 'g o' },
   { href: '/clients', label: 'Clients', key: 'clients', hint: 'g c' },
+  { href: '/tpn-audits', label: 'TPN Audits', key: 'audits', hint: 'g w' },
   { href: '/billing', label: 'Billing', key: 'billing', hint: 'g b' },
   { href: '/notes', label: 'Notes & SOPs', key: 'notes', hint: 'g n' },
 ];

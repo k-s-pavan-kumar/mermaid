@@ -38,6 +38,7 @@ const db: LocalDB = {
   journal_entries: [],
   goals: [],
   goal_projects: [],
+  audits: [],
 };
 
 writeDb(db);

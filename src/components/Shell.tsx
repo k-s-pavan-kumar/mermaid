@@ -40,6 +40,7 @@ export async function Shell({
     { label: 'Projects', href: '/projects', group: 'Page', hint: 'g p' },
     { label: 'Goals — yearly goals & month-wise project plan', href: '/goals', group: 'Page', hint: 'g o' },
     { label: 'Clients', href: '/clients', group: 'Page', hint: 'g c' },
+    { label: 'TPN Audits — audit clients, quotes & invoices', href: '/tpn-audits', group: 'Page', hint: 'g w' },
     { label: 'Calendar', href: '/calendar', group: 'Page', hint: 'g a' },
     { label: 'Billing — invoices & quotes', href: '/billing', group: 'Page', hint: 'g b' },
     { label: 'Notes & SOPs', href: '/notes', group: 'Page', hint: 'g n' },

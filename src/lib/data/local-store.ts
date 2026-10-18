@@ -53,6 +53,7 @@ export type LocalDB = {
   // Yearly goals and the projects planned under them, month by month.
   goals?: any[];
   goal_projects?: any[];
+  audits?: any[];
   analytics_daily?: any[];
   analytics_users?: any[];
 };

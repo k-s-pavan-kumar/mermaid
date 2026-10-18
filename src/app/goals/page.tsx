@@ -13,6 +13,8 @@ import { GOAL_STATUS_LABEL, MONTH_NAMES, MONTH_SHORT, monthLabel } from '@/featu
 import type { Goal, GoalProject } from '@/features/goals/types';
 import type { Project } from '@/features/projects/types';
 import { todayIso } from '@/lib/tz/today';
+import { getAudits } from '@/features/audits/queries';
+import { AUDIT_STAGE_LABEL, isAuditComplete } from '@/features/audits/types';
 
 const STATUS: Record<string, string> = {
   idea: 'Idea', ontrack: 'On track', review: 'In review', risk: 'At risk', done: 'Done', dropped: 'Dropped',
@@ -27,7 +29,7 @@ function MonthOptions({ blankLabel = 'Month…' }: { blankLabel?: string }) {
   );
 }
 
-export default async function GoalsPage({ searchParams }: { searchParams: Promise<{ year?: string; view?: string }> }) {
+export default async function GoalsPage({ searchParams }: { searchParams: Promise<{ year?: string; view?: string; notice?: string }> }) {
   const email = await getSessionEmail();
   if (!email) redirect('/login');
 
@@ -41,6 +43,9 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
 
   const [goals, years, projects] = await Promise.all([getGoals(email, year), getGoalYears(email), getProjects()]);
   const links = await getGoalLinks(email, goals.map((g) => g.id));
+  const goalIds = new Set(goals.map((g) => g.id));
+  // TPN audits that were attached to one of this year's goals count toward it.
+  const audits = (await getAudits(email)).filter((a) => a.goal_id && goalIds.has(a.goal_id));
   const projectById = new Map<string, Project>(projects.map((p) => [p.id, p]));
   const goalById = new Map<string, Goal>(goals.map((g) => [g.id, g]));
   // A link whose project was deleted elsewhere is simply not shown.
@@ -55,6 +60,17 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
 
   return (
     <Shell active="goals" title={`Goals ${year}`} crumb="Workspace">
+      {sp.notice === 'type' && (
+        <div className="card" style={{ marginBottom: 14, borderColor: 'var(--gold)' }}>
+          Saved — but your database doesn&apos;t accept that project type yet, so the project was created as <strong>Internal Tools</strong>. Run migration <code>009</code> (see <code>supabase/APPLY_PENDING.sql</code>) to unlock every type.
+        </div>
+      )}
+      {sp.notice === 'project-failed' && (
+        <div className="card" style={{ marginBottom: 14, borderColor: 'var(--crimson)' }}>
+          The goal was saved, but its project could not be created. Add one with <strong>New project for this goal</strong> on the goal below, or check the database migrations in <code>supabase/APPLY_PENDING.sql</code>.
+        </div>
+      )}
+
       <div className="chip-row">
         {yearChips.map((y) => <a key={y} href={href(y, view)} className={y === year ? 'active' : ''}>{y}</a>)}
       </div>
@@ -100,8 +116,10 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
 
       {view === 'goals' && goals.map((g) => {
         const gl = liveLinks.filter((l) => l.goal_id === g.id);
-        const doneCount = gl.filter((l) => projectById.get(l.project_id)?.status === 'done').length;
-        const pct = gl.length ? Math.round((doneCount / gl.length) * 100) : 0;
+        const ga = audits.filter((a) => a.goal_id === g.id);
+        const total = gl.length + ga.length;
+        const doneCount = gl.filter((l) => projectById.get(l.project_id)?.status === 'done').length + ga.filter(isAuditComplete).length;
+        const pct = total ? Math.round((doneCount / total) * 100) : 0;
         const linkedIds = new Set(gl.map((l) => l.project_id));
         const available = projects.filter((p) => !linkedIds.has(p.id));
         // Month buckets in calendar order; unplaced links last.
@@ -138,7 +156,7 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0 6px' }}>
               <div className="goal-bar"><span style={{ width: `${pct}%` }} /></div>
               <span className="text-muted" style={{ fontSize: 11.5, whiteSpace: 'nowrap' }}>
-                {gl.length === 0 ? 'No projects yet' : `${doneCount} of ${gl.length} project${gl.length === 1 ? '' : 's'} done`}
+                {total === 0 ? 'No projects or audits yet' : `${doneCount} of ${total} item${total === 1 ? '' : 's'} done`}
               </span>
             </div>
 
@@ -171,6 +189,21 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
                 })}
               </div>
             ))}
+
+            {ga.length > 0 && (
+              <div style={{ marginTop: 12 }}>
+                <div className="text-muted" style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: '.03em', textTransform: 'uppercase' }}>TPN audits</div>
+                {ga.map((a) => (
+                  <div key={a.id} className="list-row">
+                    <span style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                      <a href="/tpn-audits" style={{ fontWeight: 600, textDecoration: 'none' }}>{a.client_name}{a.company ? ` · ${a.company}` : ''}</a>
+                      <span className="tag idea">{AUDIT_STAGE_LABEL[a.stage]}</span>
+                    </span>
+                    <span className="text-muted" style={{ fontSize: 12 }}>{monthLabel(a.goal_month)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="grid-2-eq" style={{ marginTop: 14, gap: 14 }}>
               <form action={linkProjectToGoal.bind(null, g.id)} className="form-row" style={{ marginBottom: 0 }}>
@@ -205,7 +238,14 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
                   {MONTH_SHORT[i]}{key === thisMonth && <span className="text-muted" style={{ fontSize: 10.5, marginLeft: 6 }}>now</span>}
                 </span>
                 <span style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {ml.length === 0 && <span className="text-muted" style={{ fontSize: 12.5 }}>Nothing planned</span>}
+                  {ml.length === 0 && !audits.some((a) => a.goal_month === key) && <span className="text-muted" style={{ fontSize: 12.5 }}>Nothing planned</span>}
+                  {audits.filter((a) => a.goal_month === key).map((a) => (
+                    <span key={a.id} style={{ display: 'flex', gap: 8, alignItems: 'baseline', flexWrap: 'wrap' }}>
+                      <a href="/tpn-audits" style={{ fontWeight: 600, textDecoration: 'none' }}>Audit: {a.client_name}</a>
+                      <span className="tag idea">{AUDIT_STAGE_LABEL[a.stage]}</span>
+                      <span className="text-muted" style={{ fontSize: 12 }}>for {goalById.get(a.goal_id!)?.title}</span>
+                    </span>
+                  ))}
                   {ml.map((l) => {
                     const p = projectById.get(l.project_id)!;
                     return (
