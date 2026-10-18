@@ -15,7 +15,8 @@ import {
   addMetric,
 } from '@/features/projects/actions';
 import { addQuote, addInvoice, markInvoicePaidForProject } from '@/features/billing/actions';
-import { grandTotal } from '@/features/billing/types';
+import { grandTotal, invoiceMoney, sumInvoiceMoney } from '@/features/billing/types';
+import { UnrecordedBanner } from '@/features/billing/components/UnrecordedBanner';
 import { getInvoicePaidTotals } from '@/features/billing/queries';
 import { getSettings } from '@/features/settings/queries';
 import { scaffoldProject } from '@/features/scaffold/actions';
@@ -34,6 +35,7 @@ import { ProjectTypePicker } from '@/features/projects/components/ProjectTypePic
 import { getClients } from '@/features/clients/queries';
 import { TYPE_COLOR, TYPE_LABEL, projectTypes, hasType } from '@/lib/project-colors';
 import { getTasksForProject } from '@/features/today/queries';
+import { recordMissingPayments } from '@/features/billing/actions';
 import { addProjectTask, toggleTaskDone, setTaskLoggedHours, setTaskDue, deleteTaskSeries } from '@/features/today/actions';
 import { TaskRowMenu } from '@/features/projects/components/TaskRowMenu';
 import { DueBadge } from '@/features/today/components/DueBadge';
@@ -107,10 +109,11 @@ export default async function ProjectDetailPage({
 
   // Totals include tax, so the project page and the document agree.
   const paidTotals = await getInvoicePaidTotals(email);
-  const invoiced = project.invoices.filter((i) => i.status !== 'draft').reduce((s, i) => s + grandTotal(i), 0);
-  const paid = project.invoices
-    .filter((i) => i.status === 'paid' || i.status === 'partial')
-    .reduce((s, i) => s + Math.min(grandTotal(i), paidTotals.get(i.id) ?? 0), 0);
+  const money = sumInvoiceMoney(project.invoices, paidTotals);
+  const invoiced = money.billed;
+  const paid = money.cleared;
+  const outstanding = money.outstanding;
+  const unrecordedCount = project.invoices.filter((i) => invoiceMoney(i, paidTotals.get(i.id) ?? 0).unrecorded > 0).length;
 
   const sessions = await table<FocusSession>('focus_sessions').where((s) => s.project_id === id);
   const bountyPaid = project.submissions.reduce((s, x) => s + (x.payout ?? 0), 0);
@@ -393,10 +396,12 @@ export default async function ProjectDetailPage({
 
       {activeTab === 'billing' && showBilling && (
         <div>
+          <UnrecordedBanner count={unrecordedCount} amount={money.unrecorded}
+            action={async () => { 'use server'; await recordMissingPayments(id); }} />
           <div className="stat-row three">
             <div className="stat-box"><div className="lbl">Invoiced</div><div className="val">{inr(invoiced)}</div></div>
             <div className="stat-box"><div className="lbl">Paid</div><div className="val" style={{ color: 'var(--sage)' }}>{inr(paid)}</div></div>
-            <div className="stat-box"><div className="lbl">Outstanding</div><div className="val" style={{ color: 'var(--crimson)' }}>{inr(invoiced - paid)}</div></div>
+            <div className="stat-box"><div className="lbl">Outstanding</div><div className="val" style={{ color: 'var(--crimson)' }}>{inr(outstanding)}</div></div>
           </div>
 
           <div className="section-title"><h3>Quotes</h3></div>
@@ -419,7 +424,8 @@ export default async function ProjectDetailPage({
           <form action={boundAddQuote} className="form-row">
             <input name="number" placeholder="Quote no." required />
             <input name="description" placeholder="Description" />
-            <input name="amount" type="number" placeholder="Amount (₹)" required />
+            <input name="amount" type="number" step="0.01" min="0" placeholder="Amount (₹)" required />
+            <input name="tax_pct" type="number" step="0.01" min="0" max="100" placeholder="Tax % (blank = default)" aria-label="Tax percent" />
             <select name="status" defaultValue="sent">
               <option value="draft">Draft</option><option value="sent">Sent</option>
               <option value="accepted">Accepted</option><option value="declined">Declined</option>
@@ -460,7 +466,8 @@ export default async function ProjectDetailPage({
           <form action={boundAddInvoice} className="form-row">
             <input name="number" placeholder="Invoice no." required />
             <input name="description" placeholder="Description" />
-            <input name="amount" type="number" placeholder="Amount (₹)" required />
+            <input name="amount" type="number" step="0.01" min="0" placeholder="Amount (₹)" required />
+            <input name="tax_pct" type="number" step="0.01" min="0" max="100" placeholder="Tax % (blank = default)" aria-label="Tax percent" />
             <select name="status" defaultValue="pending">
               <option value="draft">Draft</option><option value="pending">Pending</option>
               <option value="paid">Paid</option><option value="overdue">Overdue</option>

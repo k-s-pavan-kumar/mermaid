@@ -220,6 +220,25 @@ async function main() {
   const withClient = await PS.createProjectRecord('me', { name: 'Acme site', type: 'client', extraTypes: ['web'], clientId: 'c9', fieldId: 'f2' });
   eq([withClient.project.type, withClient.project.types, withClient.project.client_id], ['client', ['client', 'web'], 'c9'], 'client project keeps client + field type');
 
+  // ---- 9. one rule for invoiced / paid / outstanding --------------------
+  const B = await import('../src/features/billing/types');
+  const invc = (over: Record<string, unknown>) => ({
+    id: 'i', owner_id: 'me', project_id: 'p', client_id: null, stream: 'freelance', number: 'IN-1', description: null, items: [],
+    amount: 7000, tax_pct: 0, currency: 'INR', notes: null, issued_at: '2026-08-28', quote_id: null, status: 'pending', due_at: null,
+    paid_at: null, tds_amount: 0, ...over,
+  }) as import('../src/features/billing/types').Invoice;
+  eq(B.invoiceMoney(invc({ status: 'paid' }), 0), { billed: 7000, cleared: 7000, outstanding: 0, unrecorded: 7000 }, 'invoice marked paid with no payment on file: paid in full, flagged as unrecorded (the screenshot case)');
+  eq(B.invoiceMoney(invc({ status: 'paid' }), 7000), { billed: 7000, cleared: 7000, outstanding: 0, unrecorded: 0 }, 'paid and fully recorded');
+  eq(B.invoiceMoney(invc({ status: 'pending' }), 0), { billed: 7000, cleared: 0, outstanding: 7000, unrecorded: 0 }, 'pending: all outstanding');
+  eq(B.invoiceMoney(invc({ status: 'partial' }), 3000), { billed: 7000, cleared: 3000, outstanding: 4000, unrecorded: 0 }, 'partial: billed = cleared + outstanding');
+  eq(B.invoiceMoney(invc({ status: 'draft' }), 0), { billed: 0, cleared: 0, outstanding: 0, unrecorded: 0 }, 'draft counts for nothing');
+  eq(B.invoiceMoney(invc({ tax_pct: 18, status: 'pending' }), 0).billed, 8260, 'tax is included in what is billed');
+  eq(B.invoiceMoney(invc({ status: 'paid', tds_amount: 700 }), 6300), { billed: 7000, cleared: 7000, outstanding: 0, unrecorded: 0 }, 'paid net of TDS is fully settled, nothing unrecorded');
+  eq(B.invoiceMoney(invc({ status: 'partial', tds_amount: 700 }), 6300).outstanding, 0, 'partial that covers the net-of-TDS amount leaves nothing outstanding');
+  const tot = B.sumInvoiceMoney([invc({ id: 'a', status: 'paid' }), invc({ id: 'b', status: 'partial' }), invc({ id: 'c', status: 'pending', amount: 1000 }), invc({ id: 'd', status: 'draft' })], new Map([['a', 7000], ['b', 2500]]));
+  eq([tot.billed, tot.cleared, tot.outstanding, tot.unrecorded], [15000, 9500, 5500, 0], 'totals across invoices');
+  eq(tot.billed, tot.cleared + tot.outstanding, 'invoiced always equals paid + outstanding');
+
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');
   process.exit(failed ? 1 : 0);
 }

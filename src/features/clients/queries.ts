@@ -5,7 +5,7 @@ import type { Task } from '@/features/today/types';
 import type { Note } from '@/features/notes/types';
 import type { Meeting } from '@/features/meetings/types';
 import { getBillingForClient, getInvoicePaidTotals } from '@/features/billing/queries';
-import { grandTotal } from '@/features/billing/types';
+import { sumInvoiceMoney } from '@/features/billing/types';
 import type { FocusSession } from '@/features/today/types';
 import { projectTime } from '@/features/projects/time';
 
@@ -47,12 +47,9 @@ export async function getClientWorkspace(clientId: string) {
     getInvoicePaidTotals(client.owner_id),
   ]);
 
-  const invoiced = billing.invoices
-    .filter((i) => i.status !== 'draft')
-    .reduce((s, i) => s + grandTotal(i), 0);
-  const paid = billing.invoices
-    .filter((i) => i.status === 'paid' || i.status === 'partial')
-    .reduce((s, i) => s + Math.min(grandTotal(i), paidTotals.get(i.id) ?? 0), 0);
+  const m = sumInvoiceMoney(billing.invoices, paidTotals);
+  const invoiced = m.billed;
+  const paid = m.cleared;
 
   return {
     client,
@@ -62,7 +59,7 @@ export async function getClientWorkspace(clientId: string) {
     meetings: meetings.sort((a, b) => b.starts_at.localeCompare(a.starts_at)),
     invoices: billing.invoices,
     quotes: billing.quotes,
-    money: { invoiced, paid, outstanding: Math.round((invoiced - paid) * 100) / 100 },
+    money: { invoiced, paid, outstanding: m.outstanding },
     time: projectTime({ tasks, sessions, invoiced, collected: paid, agreedCost: client.project_cost }),
   };
 }

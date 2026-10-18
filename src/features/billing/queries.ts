@@ -1,5 +1,5 @@
 import { table } from '@/lib/data';
-import { grandTotal, type Invoice, type Quote, type IncomeStream } from './types';
+import { invoiceMoney, type Invoice, type Quote, type IncomeStream } from './types';
 import type { FinanceEntry } from '@/features/daily-finance/types';
 
 export async function getInvoices(ownerId: string): Promise<Invoice[]> {
@@ -61,10 +61,9 @@ export async function getIncomeByStream(ownerId: string): Promise<
   for (const inv of invoices) {
     const key = inv.stream ?? 'other';
     const acc = streams.get(key) ?? { invoiced: 0, paid: 0 };
-    const total = grandTotal(inv);
-    if (inv.status !== 'draft') acc.invoiced += total;
-    if (inv.status === 'paid') acc.paid += total;
-    else if (inv.status === 'partial') acc.paid += Math.min(total, paidTotals.get(inv.id) ?? 0);
+    const m = invoiceMoney(inv, paidTotals.get(inv.id) ?? 0);
+    acc.invoiced += m.billed;
+    acc.paid += m.cleared;
     streams.set(key, acc);
   }
 

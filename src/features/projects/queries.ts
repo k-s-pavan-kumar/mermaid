@@ -1,6 +1,6 @@
 import { table } from '@/lib/data';
 import { hasType } from '@/lib/project-colors';
-import { grandTotal } from '@/features/billing/types';
+import { sumInvoiceMoney } from '@/features/billing/types';
 import type {
   Project,
   ProjectDetail,
@@ -57,14 +57,20 @@ export async function getEarningsSummary(projectId?: string) {
   const invoices = allInvoices.filter((i) => !projectId || i.project_id === projectId);
   const bounties = allBounties.filter((s) => !projectId || s.project_id === projectId);
 
-  const invoiced = invoices.filter((i) => i.status !== 'draft').reduce((sum, i) => sum + grandTotal(i), 0);
-  const paid = invoices.filter((i) => i.status === 'paid').reduce((sum, i) => sum + grandTotal(i), 0);
+  const entries = await table<{ id: string; source: string; linked_invoice_id?: string | null; amount: number }>('finance_entries').where(
+    (e) => e.source === 'invoice_payment' && !!e.linked_invoice_id
+  );
+  const paidTotals = new Map<string, number>();
+  for (const e of entries) paidTotals.set(e.linked_invoice_id as string, (paidTotals.get(e.linked_invoice_id as string) ?? 0) + e.amount);
+  const m = sumInvoiceMoney(invoices, paidTotals);
+  const invoiced = m.billed;
+  const paid = m.cleared;
   const bountyPaid = bounties.reduce((sum, s) => sum + (s.payout ?? 0), 0);
 
   return {
     invoiced,
     paid: paid + bountyPaid,
-    outstanding: invoiced - paid,
+    outstanding: m.outstanding,
     bountyPaid,
   };
 }

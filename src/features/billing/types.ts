@@ -92,3 +92,44 @@ export function grandTotal(doc: { items?: LineItem[]; amount: number; tax_pct?: 
 export function balanceDue(doc: Invoice, paidSoFar: number): number {
   return Math.max(0, Math.round((grandTotal(doc) - (doc.tds_amount ?? 0) - paidSoFar) * 100) / 100);
 }
+
+/**
+ * THE one place that decides what an invoice contributes to "invoiced",
+ * "paid" and "outstanding" — every page uses it, so they cannot disagree.
+ *
+ *  - draft:   nothing (an unsent invoice is an intention, not income).
+ *  - paid:    cleared in full. Outstanding is 0 even if payments were never
+ *             recorded (older invoices, or one marked paid by hand); in that
+ *             case `unrecorded` says how much has not reached Daily Finance.
+ *  - others:  outstanding = what is still owed after TDS and the payments on
+ *             file (the same balanceDue the invoice page shows); cleared is
+ *             the rest. So billed = cleared + outstanding, always.
+ */
+export interface InvoiceMoney {
+  billed: number;
+  cleared: number;
+  outstanding: number;
+  /** Marked paid, but payments on file don't cover it — so Daily Finance (and targets) are missing this money. */
+  unrecorded: number;
+}
+
+export function invoiceMoney(inv: Invoice, paidSoFar: number): InvoiceMoney {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  if (inv.status === 'draft') return { billed: 0, cleared: 0, outstanding: 0, unrecorded: 0 };
+  const billed = grandTotal(inv);
+  const owed = balanceDue(inv, paidSoFar);
+  if (inv.status === 'paid') return { billed, cleared: billed, outstanding: 0, unrecorded: owed };
+  const outstanding = Math.min(billed, owed);
+  return { billed, cleared: r2(billed - outstanding), outstanding, unrecorded: 0 };
+}
+
+/** Sum of invoiceMoney over many invoices. */
+export function sumInvoiceMoney(invoices: Invoice[], paidTotals: Map<string, number>): InvoiceMoney {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const t: InvoiceMoney = { billed: 0, cleared: 0, outstanding: 0, unrecorded: 0 };
+  for (const inv of invoices) {
+    const m = invoiceMoney(inv, paidTotals.get(inv.id) ?? 0);
+    t.billed += m.billed; t.cleared += m.cleared; t.outstanding += m.outstanding; t.unrecorded += m.unrecorded;
+  }
+  return { billed: r2(t.billed), cleared: r2(t.cleared), outstanding: r2(t.outstanding), unrecorded: r2(t.unrecorded) };
+}

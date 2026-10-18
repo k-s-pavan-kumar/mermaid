@@ -2,7 +2,7 @@ import { table } from '@/lib/data';
 import { todayIso, shiftIso } from '@/lib/tz/today';
 import { durationMinutes } from '@/features/today/time';
 import { primaryType } from '@/lib/project-colors';
-import { grandTotal, type Invoice } from '@/features/billing/types';
+import { invoiceMoney, type Invoice } from '@/features/billing/types';
 import { getInvoicePaidTotals } from '@/features/billing/queries';
 import type { Task, FocusSession } from '@/features/today/types';
 import type { Project, ProjectType, ProjectTargets } from '@/features/projects/types';
@@ -321,12 +321,11 @@ export function revenueIn(invoices: Invoice[], paidTotals: Map<string, number>, 
 
   for (const inv of invoices) {
     if (inv.status === 'draft') continue;
-    const total = grandTotal(inv);
-    const received = inv.status === 'paid' ? total : inv.status === 'partial' ? Math.min(total, paidTotals.get(inv.id) ?? 0) : 0;
+    const m = invoiceMoney(inv, paidTotals.get(inv.id) ?? 0);
     const when = inv.status === 'paid' ? inv.paid_at ?? inv.issued_at : inv.issued_at;
     if (!when || when < from || when > to) continue;
-    paid += received;
-    outstanding += Math.max(0, total - received);
+    paid += m.cleared;
+    outstanding += m.outstanding;
   }
 
   const round = (n: number) => Math.round(n * 100) / 100;

@@ -2,7 +2,9 @@ import { redirect } from 'next/navigation';
 import { getSessionEmail } from '@/lib/auth/session';
 import { getInvoices, getQuotes, getIncomeByStream, getInvoicePaidTotals } from '@/features/billing/queries';
 import { createInvoiceAndOpen, createQuoteAndOpen, markInvoicePaid, convertQuoteAndOpen, deleteDoc } from '@/features/billing/actions';
-import { grandTotal, STREAM_LABEL } from '@/features/billing/types';
+import { grandTotal, invoiceMoney, STREAM_LABEL } from '@/features/billing/types';
+import { UnrecordedBanner } from '@/features/billing/components/UnrecordedBanner';
+import { recordMissingPayments } from '@/features/billing/actions';
 import { getClients } from '@/features/clients/queries';
 import { getProjects } from '@/features/projects/queries';
 import { getSettings } from '@/features/settings/queries';
@@ -50,16 +52,14 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   const payer = (d: { client_id: string | null; project_id: string | null }) =>
     clientName(d.client_id) ?? projectName(d.project_id) ?? '—';
 
-  // Money per invoice. Paid = the whole amount is cleared (even if no payment
-  // entry was recorded); partial = whatever payments have been recorded;
-  // everything else (pending/overdue) = nothing cleared yet. Drafts don't count.
+  // Money per invoice — the shared rule (see invoiceMoney): drafts count for nothing,
+  // paid is cleared in full, anything else is billed minus what is still owed.
   const moneyOf = (i: (typeof invoices)[number]) => {
-    const t = grandTotal(i);
-    if (i.status === 'draft') return { billed: 0, cleared: 0 };
-    if (i.status === 'paid') return { billed: t, cleared: t };
-    if (i.status === 'partial') return { billed: t, cleared: Math.min(t, paidTotals.get(i.id) ?? 0) };
-    return { billed: t, cleared: 0 };
+    const m = invoiceMoney(i, paidTotals.get(i.id) ?? 0);
+    return { billed: m.billed, cleared: m.cleared };
   };
+
+  const unrecorded = invoices.map((i) => invoiceMoney(i, paidTotals.get(i.id) ?? 0).unrecorded).filter((n) => n > 0);
 
   const buckets = new Map<string, Bucket>();
   const overall = emptyBucket();
@@ -157,6 +157,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
 
   return (
     <Shell active="billing" title="Billing" crumb="Workspace">
+      <UnrecordedBanner count={unrecorded.length} amount={unrecorded.reduce((a, b) => a + b, 0)}
+        action={async () => { 'use server'; await recordMissingPayments(); }} />
       <div className="stat-row three">
         {stat('Invoiced', money(overall.invoiced), `${overall.count} invoices · all time`, 'var(--ink)')}
         {stat('Collected', money(overall.cleared), `${pct}% of invoiced`, 'var(--sage)', pct)}

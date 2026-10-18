@@ -127,21 +127,60 @@ export async function createInvoice(formData: FormData): Promise<string | null> 
     (await nextNumber(base.settings.business.invoice_prefix, existing));
 
   const { settings: _settings, ...fields } = base;
+  const postedStatus = String(formData.get('status') ?? 'pending') as Invoice['status'];
+  // "Paid" is not just a label: the payment has to be recorded (it is what
+  // Daily Finance, the totals and the yearly targets are built from). So an
+  // invoice created as Paid is saved as pending and then paid off for real below.
+  const wantsPaid = postedStatus === 'paid';
   const invoice = await table<Invoice>('invoices').insert({
     id: newId('inv'),
     ...fields,
     quote_id: String(formData.get('quote_id') ?? '').trim() || null,
     number,
-    status: (String(formData.get('status') ?? 'pending') as Invoice['status']),
+    status: wantsPaid ? 'pending' : postedStatus,
     due_at: String(formData.get('due_at') ?? '').trim() || null,
     paid_at: null,
     tds_amount: 0,
   });
 
+  if (wantsPaid) {
+    const today = todayIso();
+    const when = invoice.issued_at && invoice.issued_at <= today ? invoice.issued_at : today;
+    await applyInvoicePayment(owner, invoice, balanceDue(invoice, 0), when, null);
+  }
+
   revalidatePath('/billing');
+  revalidatePath('/daily-finance');
+  revalidatePath('/dashboard');
   if (invoice.project_id) revalidatePath(`/projects/${invoice.project_id}`);
   if (invoice.client_id) revalidatePath(`/clients/${invoice.client_id}`);
   return invoice.id;
+}
+
+/**
+ * Repair for invoices that say "paid" but have no payment on file — made by
+ * hand, or by the old "create as Paid" form — so their money never reached
+ * Daily Finance or the yearly targets. Records the missing amount as a payment
+ * dated when the invoice was paid (or issued). Optionally limited to one
+ * project. Safe to run twice: once recorded, nothing is missing any more.
+ */
+export async function recordMissingPayments(projectId?: string | null): Promise<void> {
+  const owner = await requireOwner();
+  const invoices = await table<Invoice>('invoices').where(
+    (i) => i.owner_id === owner && i.status === 'paid' && (!projectId || i.project_id === projectId)
+  );
+  const today = todayIso();
+  for (const inv of invoices) {
+    const remaining = balanceDue(inv, await paidSoFar(owner, inv.id));
+    if (remaining <= 0) continue;
+    const raw = inv.paid_at ?? inv.issued_at ?? today;
+    await applyInvoicePayment(owner, inv, remaining, raw <= today ? raw : today, 'Recorded from an invoice that was marked paid');
+  }
+  revalidatePath('/billing');
+  revalidatePath('/daily-finance');
+  revalidatePath('/dashboard');
+  revalidatePath('/projects');
+  if (projectId) revalidatePath(`/projects/${projectId}`);
 }
 
 /** Accepted quote → invoice, carrying the line items across verbatim. The
