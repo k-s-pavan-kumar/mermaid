@@ -7,6 +7,8 @@ import { getAudits } from '@/features/audits/queries';
 import { addAudit, updateAudit, setAuditStage, deleteAudit } from '@/features/audits/actions';
 import { AUDIT_STAGES, AUDIT_STAGE_LABEL, auditTotals, type Audit, type AuditStage } from '@/features/audits/types';
 import { getGoals } from '@/features/goals/queries';
+import { GoalsBoard } from '@/features/goals/components/GoalsBoard';
+import { getFieldsSafe } from '@/features/tags/queries';
 import { MONTH_NAMES, monthLabel } from '@/features/goals/types';
 import type { Goal } from '@/features/goals/types';
 
@@ -31,13 +33,16 @@ function GoalFields({ goals, audit }: { goals: Goal[]; audit?: Audit }) {
   );
 }
 
-export default async function TpnAuditsPage({ searchParams }: { searchParams: Promise<{ stage?: string }> }) {
+export default async function TpnAuditsPage({ searchParams }: { searchParams: Promise<{ stage?: string; year?: string; view?: string; notice?: string }> }) {
   const email = await getSessionEmail();
   if (!email) redirect('/login');
 
   const sp = await searchParams;
   const stage = AUDIT_STAGES.find((s) => s === sp.stage) ?? null;
-  const [audits, goals] = await Promise.all([getAudits(email), getGoals(email)]);
+  const [audits, allGoals, fields] = await Promise.all([getAudits(email), getGoals(email), getFieldsSafe(email)]);
+  const tpn = fields.find((f) => f.special === 'tpn') ?? null;
+  // TPN keeps its own goals and targets — only goals in the TPN field are offered here.
+  const goals = tpn ? allGoals.filter((g) => g.field_id === tpn.id) : [];
   const goalById = new Map(goals.map((g) => [g.id, g]));
   const totals = auditTotals(audits);
   const shown = stage ? audits.filter((a) => a.stage === stage) : audits;
@@ -50,6 +55,18 @@ export default async function TpnAuditsPage({ searchParams }: { searchParams: Pr
         Every TPN audit engagement in one place — client details, where it stands, the quote, the invoice and the payment. This page is separate from Clients and Billing, so audit money never mixes into those totals.
       </p>
 
+      {tpn ? (
+        <section style={{ marginBottom: 26 }}>
+          <h2 style={{ fontFamily: "'Fraunces',serif", fontSize: 18, margin: '0 0 10px' }}>TPN yearly targets</h2>
+          <GoalsBoard email={email} year={sp.year} view={sp.view} notice={sp.notice} basePath="/tpn-audits" scope={{ kind: 'field', field: tpn }} fields={fields} audits={audits} />
+        </section>
+      ) : (
+        <div className="card" style={{ marginBottom: 14 }}>
+          Yearly targets for TPN need the tags migration — run <code>supabase/APPLY_PENDING.sql</code>, then reload.
+        </div>
+      )}
+
+      <h2 style={{ fontFamily: "'Fraunces',serif", fontSize: 18, margin: '0 0 10px' }}>Audits</h2>
       <div className="stat-row">
         <div className="stat-box"><div className="lbl">Open audits</div><div className="val">{totals.active}</div></div>
         <div className="stat-box"><div className="lbl">Quoted</div><div className="val">{inr(totals.quoted)}</div></div>

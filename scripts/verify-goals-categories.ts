@@ -137,6 +137,25 @@ async function main() {
   eq(A.auditTotals([au({ stage: 'paid', invoice_amount: 100, paid_amount: 150 })]).outstanding, 0, 'overpayment never makes outstanding negative');
   eq(['lead', 'in_progress', 'report', 'invoiced', 'paid'].map((s) => A.isAuditComplete({ stage: s as never })), [false, false, true, true, true], 'audit counts toward a goal once the report is delivered');
 
+  // ---- 6. tags & fields ---------------------------------------------------
+  const T = await import('../src/features/tags/types');
+  const TQ = await import('../src/features/tags/queries');
+  const TS = await import('../src/features/tags/service');
+  eq(T.normaliseTagName('  Mobile   game '), 'Mobile game', 'tag name trimmed + single spaces');
+  eq(T.fieldHref({ id: 'abc', special: null }), '/fields/abc', 'field page path');
+  eq(T.fieldHref({ id: 'abc', special: 'tpn' }), '/tpn-audits', 'TPN field lives on the TPN page');
+  const first = await TQ.getTags('tagger');
+  eq(first.map((t) => t.name), ['SaaS', 'Gaming', 'Publishing', 'TPN Auditing', 'Teaching', 'Digital Marketing', 'Client Work'], 'first visit seeds the starter fields, in order');
+  eq(first.every((t) => t.is_field), true, 'starter fields are fields');
+  eq(first.find((t) => t.special === 'tpn')?.name, 'TPN Auditing', 'TPN field is marked special');
+  await Promise.all([TQ.getTags('tagger'), TQ.getTags('tagger'), TQ.getTags('tagger')]);
+  eq((await TQ.getTags('tagger')).length, 7, 'concurrent loads do not double-seed');
+  await TS.ensureTagNames('tagger', ['Photography', 'photography', 'saas', '  ', 'Legal']);
+  const after = await TQ.getTags('tagger');
+  eq(after.filter((t) => !t.is_field).map((t) => t.name), ['Legal', 'Photography'], 'typed tags become plain tags once, case-insensitively, never duplicating a field');
+  eq((await TQ.getFields('tagger')).length, 7, 'plain tags are not fields');
+  eq((await TQ.getTags('someone-new')).length, 7, 'each owner gets their own starter set');
+
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');
   process.exit(failed ? 1 : 0);
 }

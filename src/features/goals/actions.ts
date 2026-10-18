@@ -16,8 +16,16 @@ async function requireOwner(): Promise<string> {
   return email;
 }
 
+/** Where the form was submitted from, so we go back to the same page. Only our own pages are allowed. */
+function returnPath(fd: FormData): string {
+  const r = String(fd.get('return_to') ?? '');
+  return r === '/goals' || r === '/tpn-audits' || /^\/fields\/[0-9a-f-]{36}$/.test(r) ? r : '/goals';
+}
+
 function refresh(projectId?: string | null) {
   revalidatePath('/goals');
+  revalidatePath('/tpn-audits');
+  revalidatePath('/fields/[id]', 'page');
   revalidatePath('/projects');
   if (projectId) revalidatePath(`/projects/${projectId}`);
 }
@@ -56,12 +64,13 @@ async function attach(owner: string, goal: Goal, projectId: string, mm: string):
  * propagates to the caller.
  */
 async function makeProject(
-  owner: string, name: string, type: string, description: string | null,
+  owner: string, name: string, type: string, description: string | null, fieldId: string | null = null,
 ): Promise<{ project: Project; usedFallback: boolean }> {
   const wanted = (type in TYPE_COLOR ? type : 'internal') as ProjectType;
   const insert = (t: ProjectType) => table<Project>('projects').insert({
     id: newId('proj'), owner_id: owner, name, type: t, types: [t], client_id: null,
     status: 'idea', description, created_at: new Date().toISOString(),
+    ...(fieldId ? { field_id: fieldId } : {}),
   });
   try {
     return { project: await insert(wanted), usedFallback: false };
@@ -83,16 +92,28 @@ export async function addGoal(formData: FormData): Promise<void> {
   const year = Math.round(Number(formData.get('year')));
   if (!title || !Number.isInteger(year) || year < 2000 || year > 2100) return;
 
+  const fieldRaw = String(formData.get('field_id') ?? '').trim();
+  let field_id: string | null = null;
+  if (fieldRaw) {
+    const tag = await table<{ id: string; owner_id: string }>('tags').find(fieldRaw);
+    if (tag && tag.owner_id === owner) field_id = tag.id;
+  }
+  const targetRaw = String(formData.get('target_value') ?? '').trim();
+  const target = targetRaw ? Number(targetRaw) : NaN;
+  const back = returnPath(formData);
+
   const goal = await table<Goal>('goals').insert({
     id: newId(), owner_id: owner, year, title,
     description: String(formData.get('description') ?? '').trim().slice(0, 500) || null,
     status: 'active', created_at: new Date().toISOString(),
+    ...(field_id ? { field_id } : {}),
+    ...(Number.isFinite(target) && target > 0 ? { target_value: target, unit: String(formData.get('unit') ?? '').trim().slice(0, 16) || null, progress_value: 0 } : {}),
   });
 
   let notice = '';
   if (formData.get('create_project') === 'on') {
     try {
-      const { project, usedFallback } = await makeProject(owner, title, String(formData.get('type') ?? 'internal'), goal.description);
+      const { project, usedFallback } = await makeProject(owner, title, String(formData.get('type') ?? 'internal'), goal.description, field_id);
       await attach(owner, goal, project.id, String(formData.get('month') ?? ''));
       if (usedFallback) notice = 'type';
     } catch {
@@ -100,7 +121,17 @@ export async function addGoal(formData: FormData): Promise<void> {
     }
   }
   refresh();
-  redirect(`/goals?year=${year}${notice ? `&notice=${notice}` : ''}`);
+  redirect(`${back}?year=${year}${notice ? `&notice=${notice}` : ''}`);
+}
+
+/** Update hand-kept progress toward the goal's numeric target (form: progress_value). */
+export async function setGoalProgress(goalId: string, formData: FormData): Promise<void> {
+  const owner = await requireOwner();
+  if (!(await ownGoal(owner, goalId))) return;
+  const n = Number(String(formData.get('progress_value') ?? '').trim());
+  if (!Number.isFinite(n) || n < 0) return;
+  await table<Goal>('goals').update(goalId, { progress_value: n });
+  refresh();
 }
 
 export async function setGoalStatus(goalId: string, status: GoalStatus): Promise<void> {
@@ -142,7 +173,7 @@ export async function createProjectForGoal(goalId: string, formData: FormData): 
   let notice = '';
   let projectId: string | null = null;
   try {
-    const made = await makeProject(owner, name, String(formData.get('type') ?? 'internal'), null);
+    const made = await makeProject(owner, name, String(formData.get('type') ?? 'internal'), null, goal.field_id ?? null);
     projectId = made.project.id;
     await attach(owner, goal, made.project.id, String(formData.get('month') ?? ''));
     if (made.usedFallback) notice = 'type';
@@ -150,7 +181,7 @@ export async function createProjectForGoal(goalId: string, formData: FormData): 
     notice = 'project-failed';
   }
   refresh(projectId);
-  redirect(`/goals?year=${goal.year}${notice ? `&notice=${notice}` : ''}`);
+  redirect(`${returnPath(formData)}?year=${goal.year}${notice ? `&notice=${notice}` : ''}`);
 }
 
 /** Move a link to another month, or clear it with an empty month (form: month). */

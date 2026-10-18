@@ -7,6 +7,7 @@ import { Shell } from '@/components/Shell';
 import { SubmitButton } from '@/components/SubmitButton';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
 import { BillingFields } from '@/features/clients/components/BillingFields';
+import { getTagsSafe } from '@/features/tags/queries';
 import { WorkTypePicker } from '@/features/clients/components/WorkTypePicker';
 import { getRetainerInvoices } from '@/features/retainer/queries';
 import { retainerMonths } from '@/features/retainer/logic';
@@ -19,7 +20,8 @@ export default async function ClientsPage() {
   const email = await getSessionEmail();
   if (!email) redirect('/login');
 
-  const [clients, retainerInvoices] = await Promise.all([getClients(email), getRetainerInvoices()]);
+  const [clients, retainerInvoices, tagRows] = await Promise.all([getClients(email), getRetainerInvoices(), getTagsSafe(email)]);
+  const tagNames = tagRows.map((t) => t.name);
   const today = todayIso();
 
   return (
@@ -86,7 +88,7 @@ export default async function ClientsPage() {
         </div>
         <div>
           <label className="field-label">Type of work</label>
-          <WorkTypePicker library={customWorkTags(clients)} />
+          <WorkTypePicker library={[...tagNames, ...customWorkTags(clients)]} />
         </div>
         <BillingFields />
         <div className="grid-2-eq">

@@ -38,6 +38,11 @@ async function readGoal(owner: string, fd: FormData): Promise<{ goal_id: string 
   if (!id) return { goal_id: null, goal_month: null };
   const goal = await table<Goal>('goals').find(id);
   if (!goal || goal.owner_id !== owner) return { goal_id: null, goal_month: null };
+  // TPN has its own goals: an audit can only be tied to a goal in the TPN field.
+  try {
+    const tpn = (await table<{ id: string; owner_id: string; special: string | null }>('tags').where((t) => t.owner_id === owner && t.special === 'tpn'))[0];
+    if (tpn && goal.field_id !== tpn.id) return { goal_id: null, goal_month: null };
+  } catch { /* tags table not there yet */ }
   return { goal_id: goal.id, goal_month: monthKey(goal.year, String(fd.get('goal_month') ?? '')) };
 }
 

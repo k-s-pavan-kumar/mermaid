@@ -54,6 +54,7 @@ export type LocalDB = {
   goals?: any[];
   goal_projects?: any[];
   audits?: any[];
+  tags?: any[];
   analytics_daily?: any[];
   analytics_users?: any[];
 };

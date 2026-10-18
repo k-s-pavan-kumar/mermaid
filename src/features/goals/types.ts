@@ -17,6 +17,13 @@ export interface Goal {
   title: string;
   description: string | null;
   status: GoalStatus;
+  /** The Field (tag) this goal belongs to; null = a general goal. Targets never cross fields. */
+  field_id?: string | null;
+  /** Optional numeric yearly target, e.g. 12 with unit 'audits' or 500000 with unit '₹'. */
+  target_value?: number | null;
+  unit?: string | null;
+  /** Hand-kept progress toward target_value. */
+  progress_value?: number | null;
   created_at: string;
 }
 

@@ -1,10 +1,12 @@
 import { getSessionEmail, getSessionDisplayName } from '@/lib/auth/session';
+import { fieldHref, type Tag } from '@/features/tags/types';
 
 const ICONS: Record<string, React.ReactNode> = {
   today: (<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></>),
   dashboard: (<><path d="M4 19a8 8 0 1116 0" /><path d="M12 19l4.5-6" /><circle cx="12" cy="19" r="1.2" /></>),
   projects: (<><rect x="3" y="4" width="18" height="16" rx="2" /><path d="M3 9h18M8 4v5" /></>),
   audits: (<><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z" /><path d="M8.5 12l2.5 2.5L15.5 10" /></>),
+  tags: (<><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1.3" /></>),
   goals: (<><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.4" /></>),
   clients: (<><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" /><circle cx="17.5" cy="9" r="2.6" /><path d="M15 20c.3-2.6 1.9-4.5 4-5" /></>),
   calendar: (<><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></>),
@@ -27,7 +29,6 @@ const LINKS = [
   { href: '/projects', label: 'Projects', key: 'projects', hint: 'g p' },
   { href: '/goals', label: 'Goals', key: 'goals', hint: 'g o' },
   { href: '/clients', label: 'Clients', key: 'clients', hint: 'g c' },
-  { href: '/tpn-audits', label: 'TPN Audits', key: 'audits', hint: 'g w' },
   { href: '/billing', label: 'Billing', key: 'billing', hint: 'g b' },
   { href: '/notes', label: 'Notes & SOPs', key: 'notes', hint: 'g n' },
 ];
@@ -45,7 +46,7 @@ const PERSONAL_LINKS = [
   { href: '/release-stats', label: 'Release Stats', key: 'release-stats' },
 ];
 
-export async function Sidebar({ active, alertCount = 0 }: { active?: string; alertCount?: number }) {
+export async function Sidebar({ active, alertCount = 0, fields = [] }: { active?: string; alertCount?: number; fields?: Tag[] }) {
   const ownerId = await getSessionEmail();
   if (!ownerId) return null;
   // Display identity, not the owner id — under Supabase those differ and
@@ -73,6 +74,23 @@ export async function Sidebar({ active, alertCount = 0 }: { active?: string; ale
         ))}
       </nav>
 
+      {/* Each field (SaaS, Gaming, …) gets its own page and yearly targets. Before the tags table exists, TPN Audits stays reachable. */}
+      <div className="nav-label">Fields</div>
+      <nav className="nav">
+        {(fields.length ? fields : []).map((f) => (
+          <a key={f.id} href={fieldHref(f)} className={`nav-item${active === `field:${f.id}` || (f.special === 'tpn' && active === 'audits') ? ' active' : ''}`}>
+            <span className="type-dot" style={{ background: f.color, margin: '0 8px 0 3px', width: 8, height: 8, flexShrink: 0 }} />
+            <span style={{ flex: 1 }}>{f.name}</span>
+          </a>
+        ))}
+        {fields.length === 0 && (
+          <a href="/tpn-audits" className={`nav-item${active === 'audits' ? ' active' : ''}`}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">{ICONS.audits}</svg>
+            <span style={{ flex: 1 }}>TPN Audits</span>
+          </a>
+        )}
+      </nav>
+
       <div className="nav-label">Personal</div>
       <nav className="nav">
         {PERSONAL_LINKS.map((l) => (
@@ -97,6 +115,10 @@ export async function Sidebar({ active, alertCount = 0 }: { active?: string; ale
         <a href="/settings" className={`nav-item${active === 'settings' ? ' active' : ''}`}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">{ICONS.settings}</svg>
           <span style={{ flex: 1 }}>Settings</span>
+        </a>
+        <a href="/tags" className={`nav-item${active === 'tags' ? ' active' : ''}`}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">{ICONS.tags}</svg>
+          <span style={{ flex: 1 }}>Tags &amp; Fields</span>
         </a>
       </nav>
 

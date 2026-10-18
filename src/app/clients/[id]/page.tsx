@@ -13,6 +13,7 @@ import { Shell } from '@/components/Shell';
 import { SubmitButton } from '@/components/SubmitButton';
 import { ActionButton } from '@/components/ActionButton';
 import { TimezoneSelect } from '@/components/TimezoneSelect';
+import { getTagsSafe } from '@/features/tags/queries';
 import { WorkTypePicker } from '@/features/clients/components/WorkTypePicker';
 import { ClientTime } from '@/features/clients/components/ClientTime';
 import { DocForm } from '@/features/billing/components/DocForm';
@@ -69,7 +70,8 @@ export default async function ClientWorkspacePage({
   if (!workspace || workspace.client.owner_id !== email) notFound();
 
   const { client, projects, tasks, notes, meetings, invoices, quotes, money: totals, time } = workspace;
-  const [settings, allProjects, allClients] = await Promise.all([getSettings(email), getProjects(), getClients(email)]);
+  const [settings, allProjects, allClients, tagRows] = await Promise.all([getSettings(email), getProjects(), getClients(email), getTagsSafe(email)]);
+  const tagNames = tagRows.map((t) => t.name);
   const isMonthly = client.billing_type === 'monthly';
   // The Monthly payments tab only exists for retainer clients.
   const visibleTabs = Object.fromEntries(Object.entries(TABS).filter(([k]) => k !== 'retainer' || isMonthly));
@@ -527,7 +529,7 @@ export default async function ClientWorkspacePage({
             </div>
             <div>
               <label className="field-label">Type of work</label>
-              <WorkTypePicker initial={workTypes} library={customWorkTags(allClients)} />
+              <WorkTypePicker initial={workTypes} library={[...tagNames, ...customWorkTags(allClients)]} />
             </div>
             <BillingFields initial={client} />
             <div className="grid-2-eq">

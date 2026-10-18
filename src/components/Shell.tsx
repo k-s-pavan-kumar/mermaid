@@ -8,6 +8,8 @@ import { getAlerts } from '@/features/notifications/queries';
 import { getProjects } from '@/features/projects/queries';
 import { getClients } from '@/features/clients/queries';
 import { getSettings } from '@/features/settings/queries';
+import { getFieldsSafe } from '@/features/tags/queries';
+import { fieldHref } from '@/features/tags/types';
 import { AssistantPanel } from './AssistantPanel';
 import { JournalReminders } from './JournalReminders';
 import { BlockReminders } from './BlockReminders';
@@ -28,9 +30,9 @@ export async function Shell({
   children: ReactNode;
 }) {
   const email = await getSessionEmail();
-  const [alerts, projects, clients, settings] = email
-    ? await Promise.all([getAlerts(email), getProjects(), getClients(email), getSettings(email)])
-    : [[], [], [], null];
+  const [alerts, projects, clients, settings, fields] = email
+    ? await Promise.all([getAlerts(email), getProjects(), getClients(email), getSettings(email), getFieldsSafe(email)])
+    : [[], [], [], null, []];
 
   // Palette entries: fixed pages plus everything the user has actually created,
   // so ⌘K reaches real records, not just nav.
@@ -41,6 +43,8 @@ export async function Shell({
     { label: 'Goals — yearly goals & month-wise project plan', href: '/goals', group: 'Page', hint: 'g o' },
     { label: 'Clients', href: '/clients', group: 'Page', hint: 'g c' },
     { label: 'TPN Audits — audit clients, quotes & invoices', href: '/tpn-audits', group: 'Page', hint: 'g w' },
+    { label: 'Tags & Fields', href: '/tags', group: 'Page' },
+    ...fields.filter((f) => f.special !== 'tpn').map((f) => ({ label: `${f.name} — field page & yearly targets`, href: fieldHref(f), group: 'Field' })),
     { label: 'Calendar', href: '/calendar', group: 'Page', hint: 'g a' },
     { label: 'Billing — invoices & quotes', href: '/billing', group: 'Page', hint: 'g b' },
     { label: 'Notes & SOPs', href: '/notes', group: 'Page', hint: 'g n' },
@@ -60,7 +64,7 @@ export async function Shell({
 
   return (
     <div className="os">
-      <Sidebar active={active} alertCount={alerts.length} />
+      <Sidebar active={active} alertCount={alerts.length} fields={fields} />
       <div className="main">
         <div className="topbar">
           <div className="topbar-lead">

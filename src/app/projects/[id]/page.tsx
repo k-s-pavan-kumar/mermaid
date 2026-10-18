@@ -45,6 +45,8 @@ import { groupTasksByMonth } from '@/features/today/month-groups';
 import { TaskScheduleFields } from '@/features/today/components/TaskScheduleFields';
 import { todayIso } from '@/lib/tz/today';
 import { getGoals, getLinksForProject } from '@/features/goals/queries';
+import { getFieldsSafe } from '@/features/tags/queries';
+import { setProjectField } from '@/features/tags/actions';
 import { assignProjectToGoal, unlinkGoalProject } from '@/features/goals/actions';
 import { MONTH_NAMES, monthLabel } from '@/features/goals/types';
 
@@ -80,7 +82,8 @@ export default async function ProjectDetailPage({
   const tasks = await getTasksForProject(id);
   const boundAddProjectTask = addProjectTask.bind(null, id);
 
-  const [allGoals, goalLinks] = await Promise.all([getGoals(email), getLinksForProject(email, id)]);
+  const [allGoals, goalLinks, allFields] = await Promise.all([getGoals(email), getLinksForProject(email, id), getFieldsSafe(email)]);
+  const projectField = allFields.find((f) => f.id === project.field_id);
   const goalById = new Map(allGoals.map((g) => [g.id, g]));
   const projectGoals = goalLinks.filter((l) => goalById.has(l.goal_id));
 
@@ -539,6 +542,23 @@ export default async function ProjectDetailPage({
               <SubmitButton className="btn" pendingLabel="Saving…" style={{ width: 'fit-content' }}>Save changes</SubmitButton>
             </form>
           </div>
+
+          {allFields.length > 0 && (
+            <div className="card" style={{ maxWidth: 560, marginTop: 16 }}>
+              <h3>Field</h3>
+              <p className="text-muted" style={{ fontSize: 11.5, marginTop: -4 }}>
+                Which part of your work this belongs to. It then shows on that field&apos;s page, next to that field&apos;s yearly targets.
+              </p>
+              <form action={setProjectField} className="form-row" style={{ marginBottom: 0 }}>
+                <input type="hidden" name="project_id" value={id} />
+                <select name="field_id" defaultValue={projectField?.id ?? ''} aria-label="Field">
+                  <option value="">No field</option>
+                  {allFields.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+                <SubmitButton className="btn-inline" pendingLabel="Saving…">Save field</SubmitButton>
+              </form>
+            </div>
+          )}
 
           <div className="card" style={{ maxWidth: 560, marginTop: 16 }}>
             <h3>Yearly goals</h3>

@@ -27,6 +27,8 @@ export type ProjectStatus = 'idea' | 'ontrack' | 'review' | 'risk' | 'done' | 'd
 export interface Project {
   id: string;
   owner_id: string;
+  /** The Field (tag) this project belongs to — shown on that field's page. */
+  field_id?: string | null;
   name: string;
   /**
    * Primary type — always equal to types[0]. Kept as its own column so

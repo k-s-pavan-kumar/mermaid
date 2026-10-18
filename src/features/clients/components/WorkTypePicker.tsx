@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useTransition } from 'react';
+import { createTagByName } from '@/features/tags/actions';
 import {
   MAX_CUSTOM_TAG_LENGTH, MAX_WORK_TAGS, WORK_TYPES, normaliseWorkTag, workTypeColor, workTypeLabel, type WorkType,
 } from '../types';
@@ -20,7 +21,10 @@ import {
 export function WorkTypePicker({ initial = [], library = [] }: { initial?: WorkType[]; library?: string[] }) {
   const [selected, setSelected] = useState<WorkType[]>(initial);
   // Custom tags on offer: ones from other clients, ones already on this client, and any added in this form.
-  const [custom, setCustom] = useState<string[]>(() => dedupe([...library, ...initial.filter((t) => !WORK_TYPES.includes(t as never))]));
+  // A library name that is really a built-in ("Teaching" vs 'teaching') is shown once, as the built-in.
+  const [custom, setCustom] = useState<string[]>(() =>
+    dedupe([...library, ...initial].filter((t) => normaliseWorkTag(t) === t && !WORK_TYPES.includes(t as never))));
+  const [saving, startSave] = useTransition();
   const [draft, setDraft] = useState('');
   const [note, setNote] = useState<string | null>(null);
 
@@ -37,10 +41,24 @@ export function WorkTypePicker({ initial = [], library = [] }: { initial?: WorkT
       setNote(`At most ${MAX_WORK_TAGS} tags per client.`);
       return;
     }
-    if (!existing) setCustom((c) => dedupe([...c, use]));
-    setSelected((cur) => (cur.some((s) => s.toLowerCase() === use.toLowerCase()) ? cur : [...cur, use]));
-    setNote(existing ? `"${workTypeLabel(use)}" already exists — ticked it for you.` : null);
-    setDraft('');
+    const tick = (name: string) => setSelected((cur) => (cur.some((s) => s.toLowerCase() === name.toLowerCase()) ? cur : [...cur, name]));
+    if (existing) {
+      tick(use);
+      setNote(`"${workTypeLabel(use)}" already exists — ticked it for you.`);
+      setDraft('');
+      return;
+    }
+    // New tag: save it to the shared tags table right now, so it is still there
+    // after leaving this page and shows up on goals and the Tags page too —
+    // whether or not this client form is submitted.
+    startSave(async () => {
+      const res = await createTagByName(use);
+      if (!res.ok) { setNote(res.message); return; }
+      setCustom((c) => dedupe([...c, res.name]));
+      tick(res.name);
+      setNote(null);
+      setDraft('');
+    });
   }
 
   const all: WorkType[] = [...WORK_TYPES, ...custom];
@@ -76,7 +94,7 @@ export function WorkTypePicker({ initial = [], library = [] }: { initial?: WorkT
           aria-label="New work type tag"
           style={{ flex: 1, minWidth: 0 }}
         />
-        <button type="button" className="btn-ghost" onClick={addDraft} disabled={!draft.trim()}>Add tag</button>
+        <button type="button" className="btn-ghost" onClick={addDraft} disabled={!draft.trim() || saving}>{saving ? 'Saving…' : 'Add tag'}</button>
       </div>
       {note && <p className="text-muted" style={{ fontSize: 11.5, margin: '4px 0 0' }}>{note}</p>}
 
@@ -84,7 +102,7 @@ export function WorkTypePicker({ initial = [], library = [] }: { initial?: WorkT
         <input key={t} type="hidden" name="work_types" value={t} />
       ))}
       <p className="text-muted" style={{ fontSize: 11.5, margin: '6px 0 0' }}>
-        Pick every kind of work you do for them — none is a valid answer for a brand new lead. Tags you add stay available for your other clients.
+        Pick every kind of work you do for them — none is a valid answer for a brand new lead. Tags you add are saved to your Tags list and offered everywhere.
       </p>
     </div>
   );

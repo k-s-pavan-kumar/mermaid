@@ -7,7 +7,8 @@ import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
 import type { BillingType, Client, ClientStatus, WorkType } from './types';
 import { todayIso } from '@/lib/tz/today';
-import { normaliseWorkTags } from './types';
+import { isBuiltInWorkType, normaliseWorkTags } from './types';
+import { ensureTagNames } from '@/features/tags/service';
 import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
@@ -65,16 +66,19 @@ export async function createClient(formData: FormData): Promise<void> {
     created_at: new Date().toISOString(),
   });
 
+  await ensureTagNames(owner_id, client.work_types.filter((t) => !isBuiltInWorkType(t)));
   revalidatePath('/clients');
   redirect(`/clients/${client.id}`);
 }
 
 export async function updateClient(id: string, formData: FormData): Promise<void> {
-  await requireOwner();
+  const owner = await requireOwner();
   const name = String(formData.get('name') ?? '').trim();
   if (!name) return;
 
-  await table<Client>('clients').update(id, { name, ...fields(formData) });
+  const data = fields(formData);
+  await table<Client>('clients').update(id, { name, ...data });
+  await ensureTagNames(owner, data.work_types.filter((t) => !isBuiltInWorkType(t)));
 
   revalidatePath('/clients');
   revalidatePath(`/clients/${id}`);
