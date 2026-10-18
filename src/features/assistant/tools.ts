@@ -9,7 +9,7 @@ import { grandTotal, subtotal, type IncomeStream, type Invoice, type LineItem, t
 import { TYPE_LABEL } from '@/lib/project-colors';
 import type { Project, ProjectType } from '@/features/projects/types';
 import type { Task } from '@/features/today/types';
-import type { Client, WorkType } from '@/features/clients/types';
+import { normaliseWorkTags, type Client } from '@/features/clients/types';
 import type { Meeting } from '@/features/meetings/types';
 import { newId } from '@/lib/id';
 
@@ -209,7 +209,7 @@ export async function runTool(name: string, args: Record<string, any>, ownerId: 
         phone: null,
         address: null,
         timezone: args.timezone ? String(args.timezone) : 'Asia/Kolkata',
-        work_types: (Array.isArray(args.work_types) ? args.work_types.map(String) : []) as WorkType[],
+        work_types: normaliseWorkTags(Array.isArray(args.work_types) ? args.work_types.map(String) : []),
         project_cost: null,
         billing_type: 'project',
         monthly_fee: null,

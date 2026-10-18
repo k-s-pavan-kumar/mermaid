@@ -122,7 +122,8 @@ create table clients (
   -- What you do for them. Multi-valued because one client is rarely one
   -- kind of work: a web build becomes a retainer and books a training day.
   work_types   text[] not null default '{}'
-                 check (work_types <@ array['web','mobile','design','security','teaching','consulting','maintenance','content','marketing']::text[]),
+                 -- Built-in keys ('web', 'mobile'…) or custom tags typed by the user; see migration 018.
+                 check (cardinality(work_types) <= 12),
   project_cost numeric,                       -- agreed TOTAL project cost (fixed price), pre-fills the first invoice/quote line
   -- How they pay: one fixed project cost, or a monthly retainer (e.g. digital
   -- marketing). Each received month is a paid invoice carrying invoices.period.
@@ -939,3 +940,38 @@ create index if not exists finance_investment_log_owner_idx on finance_investmen
 alter table finance_investment_log enable row level security;
 drop policy if exists "owner full access" on finance_investment_log;
 create policy "owner full access" on finance_investment_log for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+-- ---------------------------------------------------------------------------
+-- Yearly goals + investment categories. Mirrors migration 017.
+-- ---------------------------------------------------------------------------
+create table if not exists goals (
+  id          uuid primary key default uuid_generate_v4(),
+  owner_id    uuid not null references auth.users(id) default auth.uid(),
+  year        int  not null check (year between 2000 and 2100),
+  title       text not null,
+  description text,
+  status      text not null default 'active' check (status in ('active','done','dropped')),
+  created_at  timestamptz not null default now()
+);
+create index if not exists goals_owner_year_idx on goals(owner_id, year);
+alter table goals enable row level security;
+drop policy if exists "owner full access" on goals;
+create policy "owner full access" on goals for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+create table if not exists goal_projects (
+  id          uuid primary key default uuid_generate_v4(),
+  owner_id    uuid not null references auth.users(id) default auth.uid(),
+  goal_id     uuid not null references goals(id) on delete cascade,
+  project_id  uuid not null references projects(id) on delete cascade,
+  month       text check (month ~ '^\d{4}-(0[1-9]|1[0-2])$'),
+  created_at  timestamptz not null default now(),
+  unique (goal_id, project_id)
+);
+create index if not exists goal_projects_owner_idx on goal_projects(owner_id, goal_id);
+create index if not exists goal_projects_project_idx on goal_projects(project_id);
+alter table goal_projects enable row level security;
+drop policy if exists "owner full access" on goal_projects;
+create policy "owner full access" on goal_projects for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+alter table finance_investment_log add column if not exists category text;
+create index if not exists finance_investment_log_cat_idx on finance_investment_log(owner_id, category);

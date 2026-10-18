@@ -31,7 +31,8 @@
     "journal:remind": "node scripts/journal-reminder.js",
     "journal:remind:test": "node scripts/journal-reminder.js --test",
     "journal:remind:install": "node scripts/journal-reminder.js --install",
-    "journal:remind:uninstall": "node scripts/journal-reminder.js --uninstall"
+    "journal:remind:uninstall": "node scripts/journal-reminder.js --uninstall",
+    "verify:goals-categories": "tsx scripts/verify-goals-categories.ts"
   },
   "dependencies": {
     "next": "^15.0.0",

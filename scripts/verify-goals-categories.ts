@@ -106,6 +106,20 @@ async function main() {
   eq((await S.getInvestmentLog(me)).find((e) => e.id === 'old')?.category, 'mutual_funds', 'new category sticks');
   eq(C.totalsByCategory(await S.getInvestmentLog(me)).find((t) => t.key === 'gold')?.total, 7000, 'gold total drops after the move');
 
+  // ---- 4. custom client work-type tags ----------------------------------
+  const W = await import('../src/features/clients/types');
+  eq(W.normaliseWorkTag('  Photography  '), 'Photography', 'custom tag is trimmed, case kept');
+  eq(W.normaliseWorkTag('web development'), 'web', 'typing a built-in label maps to the built-in');
+  eq(W.normaliseWorkTag('MOBILE'), 'mobile', 'typing a built-in key maps to the built-in');
+  eq(W.normaliseWorkTag('   '), '', 'blank tag dropped');
+  eq(W.normaliseWorkTags(['Photography', 'photography', 'web', 'Web development', '']), ['Photography', 'web'], 'duplicates collapse case-insensitively');
+  eq(W.normaliseWorkTags(Array.from({ length: 20 }, (_, i) => `t${i}`)).length, 12, 'capped at 12 tags');
+  eq(W.workTypeLabel('web'), 'Web development', 'built-in label');
+  eq(W.workTypeLabel('Photography'), 'Photography', 'custom label is itself');
+  eq(W.workTypeColor('Photography') === W.workTypeColor('photography'), true, 'custom colour is stable per name');
+  eq(W.customWorkTags([{ work_types: ['web', 'Photography'] }, { work_types: ['photography', 'Legal'] }]), ['Legal', 'Photography'], 'tag library = customs across clients, A-Z, no built-ins');
+  eq(W.clientWorkTypes({ work_types: ['web', 'Legal'] }), ['web', 'Legal'], 'custom tags are kept on a client (not filtered out)');
+
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');
   process.exit(failed ? 1 : 0);
 }

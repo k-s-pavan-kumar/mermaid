@@ -7,7 +7,7 @@ import { table } from '@/lib/data';
 import { getSessionEmail } from '@/lib/auth/session';
 import type { BillingType, Client, ClientStatus, WorkType } from './types';
 import { todayIso } from '@/lib/tz/today';
-import { WORK_TYPE_LABEL } from './types';
+import { normaliseWorkTags } from './types';
 import { newId } from '@/lib/id';
 
 async function requireOwner(): Promise<string> {
@@ -17,10 +17,7 @@ async function requireOwner(): Promise<string> {
 }
 
 function readWorkTypes(formData: FormData): WorkType[] {
-  return formData
-    .getAll('work_types')
-    .map(String)
-    .filter((v): v is WorkType => v in WORK_TYPE_LABEL);
+  return normaliseWorkTags(formData.getAll('work_types').map(String));
 }
 
 function fields(formData: FormData) {
