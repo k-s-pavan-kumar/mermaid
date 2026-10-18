@@ -16,6 +16,7 @@ export const TYPE_COLOR: Record<ProjectType, string> = {
   institute: 'var(--cyan)',
   teaching: 'var(--sage)',
   marketing: 'var(--plumrose)',
+  publishing: 'var(--plumrose)',
 };
 
 export const TYPE_LABEL: Record<ProjectType, string> = {
@@ -24,6 +25,7 @@ export const TYPE_LABEL: Record<ProjectType, string> = {
   opensource: 'Open Source',
   mobile: 'Mobile Apps',
   game: 'Games',
+  publishing: 'Book Publishing',
   web: 'Web Apps',
   content: 'Content',
   assess: 'Assessments',
@@ -50,6 +52,7 @@ export const TYPE_HINT: Record<ProjectType, string> = {
   institute: 'Guest lectures, workshops, institute honorariums.',
   teaching: 'Regular teaching — school, institute classes, tuition.',
   marketing: 'Digital marketing — SEO, ads, social, campaigns.',
+  publishing: 'Becoming an author and establishing name'
 };
 
 /** Stable display order for pickers and filter chips. */

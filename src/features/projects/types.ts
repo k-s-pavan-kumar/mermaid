@@ -15,7 +15,8 @@ export type ProjectType =
   | 'freelance'
   | 'institute'
   | 'teaching'
-  | 'marketing';
+  | 'marketing'
+  | 'publishing';
 /**
  * 'dropped' is additive, same as every other extension to this enum — an
  * explicit terminal state distinct from 'done', so the Reward Vault can tell
