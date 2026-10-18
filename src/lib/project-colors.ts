@@ -70,6 +70,7 @@ export const TYPE_ORDER: ProjectType[] = [
   'institute',
   'teaching',
   'marketing',
+  'publishing',
 ];
 
 type TypeCarrier = { type: ProjectType; types?: ProjectType[] | null };
