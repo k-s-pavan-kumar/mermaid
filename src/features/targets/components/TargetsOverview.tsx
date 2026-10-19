@@ -17,6 +17,7 @@ export function TargetsOverview({ year, today, data }: { year: number; today: st
     return { f, target, s: summarise(target, monthly, idx) };
   });
 
+  const unassignedTotal = data.unassigned.reduce((a, u) => a + u.amount, 0);
   const totalTarget = rows.reduce((a, r) => a + r.target, 0);
   const totalMonthly = sumMonthly(rows.map((r) => r.s.monthly));
   const all = summarise(totalTarget, totalMonthly, idx);
@@ -49,15 +50,32 @@ export function TargetsOverview({ year, today, data }: { year: number; today: st
         <div className="card" style={{ textAlign: 'center' }}>
           <h3 style={{ marginTop: 0 }}>Where it came from</h3>
           <div style={{ display: 'flex', justifyContent: 'center' }}>
-            <SharePie slices={rows.map((r) => ({ name: r.f.name, color: r.f.color, value: r.s.reached }))} />
+            <SharePie slices={[...rows.map((r) => ({ name: r.f.name, color: r.f.color, value: r.s.reached })), { name: 'Not in a field', color: '#B9BCCB', value: unassignedTotal }]} />
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px 12px', justifyContent: 'center', marginTop: 8, fontSize: 12 }}>
             {rows.filter((r) => r.s.reached > 0).map((r) => (
               <span key={r.f.id}><span className="type-dot" style={{ background: r.f.color, margin: '0 5px 0 0' }} />{r.f.name} {inr0(r.s.reached)}</span>
             ))}
+            {unassignedTotal > 0 && <span><span className="type-dot" style={{ background: '#B9BCCB', margin: '0 5px 0 0' }} />Not in a field {inr0(unassignedTotal)}</span>}
           </div>
         </div>
       </div>
+
+      {data.unassigned.length > 0 && (
+        <div className="card" style={{ marginBottom: 16, borderColor: 'var(--gold)' }}>
+          <strong style={{ fontSize: 13 }}>{inr0(unassignedTotal)} received in {year} isn&apos;t counted in any field yet</strong>
+          <p className="text-muted" style={{ fontSize: 12.5, margin: '4px 0 8px' }}>
+            It was paid, but nothing links it to a field. Put its project in a field (project → Settings → Field), or tick the field under the client&apos;s <em>Type of work</em>, and it moves into that field&apos;s totals.
+          </p>
+          {data.unassigned.slice(0, 6).map((u) => (
+            <div key={u.id} className="list-row" style={{ fontSize: 13 }}>
+              <span>{u.href ? <a href={u.href} style={{ textDecoration: 'none', fontWeight: 600 }}>{u.label}</a> : u.label}<span className="text-muted" style={{ fontSize: 12 }}> · {u.date}</span></span>
+              <span className="mono">{inr0(u.amount)}</span>
+            </div>
+          ))}
+          {data.unassigned.length > 6 && <div className="text-muted" style={{ fontSize: 12, marginTop: 6 }}>+ {data.unassigned.length - 6} more</div>}
+        </div>
+      )}
 
       <div className="card" style={{ marginBottom: 16 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>

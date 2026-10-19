@@ -1070,3 +1070,7 @@ create index if not exists field_targets_owner_idx on field_targets(owner_id, ye
 alter table field_targets enable row level security;
 drop policy if exists "owner full access" on field_targets;
 create policy "owner full access" on field_targets for all using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+-- A chosen icon for each tag / field (shown in the sidebar). Run after 022.
+-- Safe to run more than once. Left null on existing rows: the app picks a
+-- sensible default from the name until you choose one.
+alter table tags add column if not exists icon text;

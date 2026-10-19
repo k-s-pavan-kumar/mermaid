@@ -72,11 +72,19 @@ async function baseFields(formData: FormData, owner: string) {
   const items = readItems(formData);
   const explicitAmount = Number(formData.get('amount') ?? 0) || 0;
   const taxRaw = formData.get('tax_pct');
+  const projectId = String(formData.get('project_id') ?? '').trim() || null;
+  let clientId = String(formData.get('client_id') ?? '').trim() || null;
+  // Raised on a project with no client picked: use the project's own client, so
+  // "Bill to", the client's totals and the field attribution all know who it is for.
+  if (!clientId && projectId) {
+    const proj = await table<{ id: string; owner_id: string; client_id: string | null }>('projects').find(projectId);
+    if (proj && proj.owner_id === owner) clientId = proj.client_id;
+  }
 
   return {
     owner_id: owner,
-    project_id: String(formData.get('project_id') ?? '').trim() || null,
-    client_id: String(formData.get('client_id') ?? '').trim() || null,
+    project_id: projectId,
+    client_id: clientId,
     stream: (String(formData.get('stream') ?? 'freelance') as IncomeStream),
     description: String(formData.get('description') ?? '').trim() || null,
     items,

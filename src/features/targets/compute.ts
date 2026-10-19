@@ -8,7 +8,8 @@
  *   2. the invoice's project, if that sits in a field (an own project's invoice)
  *   3. an invoice with stream 'bounty' -> the Bug Bounty field
  *   4. the invoice's client, if one of their work-type tags is a field's name
- *   5. a bounty payout -> the Bug Bounty field
+ *   5. the invoice's client, if their projects sit in a field (the most-used one)
+ *   6. a bounty payout -> the Bug Bounty field
  * Anything else counts toward no field. One row never counts twice.
  * TPN audits are tracked on their own page, so their received amounts are added
  * to the TPN field by the month they were paid.
@@ -31,6 +32,8 @@ export interface AttributionContext {
   projectField: Map<string, string | null>;
   invoices: Map<string, { project_id: string | null; client_id: string | null; stream: string }>;
   clientTags: Map<string, string[]>;
+  /** client id -> the field most of that client's projects sit in. */
+  clientProjectField?: Map<string, string>;
 }
 
 export function fieldForIncome(e: IncomeRow, ctx: AttributionContext): string | null {
@@ -50,6 +53,8 @@ export function fieldForIncome(e: IncomeRow, ctx: AttributionContext): string | 
       const tags = (ctx.clientTags.get(inv.client_id) ?? []).map((t) => t.toLowerCase());
       const hit = ctx.fields.find((f) => tags.includes(f.name.toLowerCase()));
       if (hit) return hit.id;
+      const viaProjects = ctx.clientProjectField?.get(inv.client_id);
+      if (viaProjects) return viaProjects;
     }
   }
   if ((e.source === 'bounty_payout' || e.linked_bounty_id) && bounty) return bounty;
@@ -136,4 +141,22 @@ export function summarise(target: number, monthly: number[], nowIdx: number): Ta
 /** Sum several fields' months into one series (for the all-fields view). */
 export function sumMonthly(series: number[][]): number[] {
   return zeros().map((_, i) => r2(series.reduce((a, s) => a + (s[i] ?? 0), 0)));
+}
+
+/** The field most of a client's projects sit in, per client. Ties go to the first seen. */
+export function clientProjectFields(projects: { client_id?: string | null; field_id?: string | null }[]): Map<string, string> {
+  const counts = new Map<string, Map<string, number>>();
+  for (const p of projects) {
+    if (!p.client_id || !p.field_id) continue;
+    const m = counts.get(p.client_id) ?? new Map<string, number>();
+    m.set(p.field_id, (m.get(p.field_id) ?? 0) + 1);
+    counts.set(p.client_id, m);
+  }
+  const out = new Map<string, string>();
+  for (const [client, m] of counts) {
+    let best = ''; let n = 0;
+    for (const [f, c] of m) if (c > n) { best = f; n = c; }
+    if (best) out.set(client, best);
+  }
+  return out;
 }

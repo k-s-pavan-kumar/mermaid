@@ -239,6 +239,23 @@ async function main() {
   eq([tot.billed, tot.cleared, tot.outstanding, tot.unrecorded], [15000, 9500, 5500, 0], 'totals across invoices');
   eq(tot.billed, tot.cleared + tot.outstanding, 'invoiced always equals paid + outstanding');
 
+  // ---- 10. tag icons, pie geometry, client-project attribution ----------
+  const IC = await import('../src/features/tags/icons');
+  eq(new Set(IC.ICON_KEYS).size === IC.ICON_KEYS.length && IC.ICON_KEYS.length >= 20, true, 'icon keys are unique and there is a real choice');
+  eq(IC.TAG_ICONS.every((i) => i.paths.length > 0 && i.paths.every((d) => d.startsWith('M'))), true, 'every icon is drawn from path data');
+  eq([IC.defaultIconFor({ name: 'SaaS', special: null }), IC.defaultIconFor({ name: 'Gaming', special: null }), IC.defaultIconFor({ name: 'Book Publishing', special: null }),
+      IC.defaultIconFor({ name: 'x', special: 'tpn' }), IC.defaultIconFor({ name: 'x', special: 'bounty' }), IC.defaultIconFor({ name: 'Digital Marketing', special: null }), IC.defaultIconFor({ name: 'Whatever', special: null })],
+     ['cloud', 'gamepad', 'book', 'shield', 'bug', 'megaphone', 'tag'], 'default icon follows the name');
+  eq(IC.iconKeyFor({ name: 'SaaS', special: null, icon: 'rocket' }), 'rocket', 'a chosen icon wins');
+  eq(IC.iconKeyFor({ name: 'SaaS', special: null, icon: 'not-an-icon' }), 'cloud', 'an unknown stored icon falls back to the default');
+  const CH = await import('../src/features/targets/components/charts');
+  const quarter = CH.pieSlicePath(0, 25);
+  eq(quarter.startsWith('M16,16 L16.000,0.000 A16,16 0 0 1 32.000,16.000'), true, 'a 25% slice runs from 12 o\'clock to 3 o\'clock');
+  eq(CH.pieSlicePath(0, 60).includes('0 1 1'), true, 'a slice over half the pie uses the large-arc flag');
+  const cpf = TG.clientProjectFields([{ client_id: 'a', field_id: 'x' }, { client_id: 'a', field_id: 'y' }, { client_id: 'a', field_id: 'y' }, { client_id: 'b', field_id: null }, { client_id: null, field_id: 'x' }]);
+  eq([cpf.get('a'), cpf.has('b')], ['y', false], "a client's field is the one most of their projects sit in");
+  eq(TG.fieldForIncome(inc('a', '2026-03-01', 1, { linked_invoice_id: 'i4' }), { ...ctx, clientProjectField: new Map([['c2', 'mkt']]) }), 'mkt', "client invoice with no project or tag -> the field of the client's projects");
+
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');
   process.exit(failed ? 1 : 0);
 }

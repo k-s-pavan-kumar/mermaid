@@ -12,6 +12,8 @@ export interface Tag {
   owner_id: string;
   name: string;
   color: string;
+  /** Key from icons.tsx; null/absent = a default picked from the name. */
+  icon?: string | null;
   is_field: boolean;
   /** 'tpn' / 'bounty' mark fields that already have their own page (/tpn-audits, /bounty-pipeline); their goals never mix with other fields. */
   special: 'tpn' | 'bounty' | null;

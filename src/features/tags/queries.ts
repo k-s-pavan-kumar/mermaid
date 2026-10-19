@@ -1,8 +1,12 @@
 import { table } from '@/lib/data';
 import { DEFAULT_FIELDS, FIELD_ORDER, type Tag } from './types';
+import { defaultIconFor } from './icons';
 import { newId } from '@/lib/id';
 
 const inFlight = new Map<string, Promise<void>>();
+
+/** Starter icon for a new row. Harmless extra field if the icon column doesn't exist yet — callers retry without it. */
+const iconColumn = (f: { name: string; special: 'tpn' | 'bounty' | null }) => ({ icon: defaultIconFor(f) });
 
 /**
  * First visit: give the owner the starter fields (SaaS, Gaming, …). Only runs
@@ -14,12 +18,17 @@ async function seedIfEmpty(ownerId: string): Promise<void> {
   const existing = await table<Tag>('tags').where((t) => t.owner_id === ownerId);
   if (existing.length > 0) return;
   for (const [i, f] of DEFAULT_FIELDS.entries()) {
+    const row = {
+      id: newId(), owner_id: ownerId, name: f.name, color: f.color, is_field: true, special: f.special,
+      sort_order: i, created_at: new Date().toISOString(),
+    };
     try {
-      await table<Tag>('tags').insert({
-        id: newId(), owner_id: ownerId, name: f.name, color: f.color, is_field: true, special: f.special,
-        sort_order: i, created_at: new Date().toISOString(),
-      });
-    } catch { /* another request already inserted it */ }
+      await table<Tag>('tags').insert({ ...row, ...iconColumn(f) });
+    } catch {
+      // Either another request already inserted it, or the database predates the icon column
+      // (migration 023): try once more without the icon so seeding never silently produces nothing.
+      try { await table<Tag>('tags').insert(row); } catch { /* already there */ }
+    }
   }
 }
 

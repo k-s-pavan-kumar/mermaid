@@ -6,6 +6,7 @@ import { getSessionEmail } from '@/lib/auth/session';
 import { newId } from '@/lib/id';
 import { TAG_COLORS, fieldProjectType, isHex, normaliseTagName, type Tag } from './types';
 import { createProjectRecord } from '@/features/projects/service';
+import { defaultIconFor, isIconKey } from './icons';
 
 async function requireOwner(): Promise<string> {
   const email = await getSessionEmail();
@@ -18,6 +19,12 @@ function refresh() {
   revalidatePath('/clients', 'layout');
   revalidatePath('/goals');
   revalidatePath('/', 'layout'); // the sidebar lists fields on every page
+}
+
+/** The icon posted by the picker, or one guessed from the name. Spread into an insert; empty if the column isn't there yet. */
+async function iconFor(formData: FormData, name: string): Promise<{ icon?: string }> {
+  const picked = String(formData.get('icon') ?? '');
+  return { icon: isIconKey(picked) ? picked : defaultIconFor({ name, special: null }) };
 }
 
 export type TagResult = { ok: true; name: string } | { ok: false; message: string };
@@ -55,12 +62,18 @@ export async function addTag(formData: FormData): Promise<void> {
   if (all.some((t) => t.name.toLowerCase() === name.toLowerCase())) return;
   const color = String(formData.get('color') ?? '');
   const isField = formData.get('is_field') === 'on';
-  await table<Tag>('tags').insert({
+  const row = {
     id: newId(), owner_id: owner, name, color: isHex(color) ? color : TAG_COLORS[all.length % TAG_COLORS.length]!,
     is_field: isField, special: null,
     sort_order: isField ? all.filter((t) => t.is_field).length : 0,
     created_at: new Date().toISOString(),
-  });
+  } as Tag;
+  try {
+    await table<Tag>('tags').insert({ ...row, ...(await iconFor(formData, name)) });
+  } catch {
+    // Database predates migration 023 (no icon column): save the tag without its icon rather than fail.
+    await table<Tag>('tags').insert(row);
+  }
   refresh();
 }
 
@@ -150,4 +163,14 @@ export async function createFieldProject(fieldId: string, formData: FormData): P
   revalidatePath('/fields/[id]', 'page');
   revalidatePath('/tpn-audits');
   revalidatePath('/bounty-pipeline');
+}
+
+/** Change a tag's icon. Form: icon. */
+export async function setTagIcon(id: string, formData: FormData): Promise<void> {
+  const owner = await requireOwner();
+  const icon = String(formData.get('icon') ?? '');
+  const t = await table<Tag>('tags').find(id);
+  if (!t || t.owner_id !== owner || !isIconKey(icon)) return;
+  await table<Tag>('tags').update(id, { icon });
+  refresh();
 }

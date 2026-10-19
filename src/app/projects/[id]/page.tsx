@@ -74,7 +74,9 @@ export default async function ProjectDetailPage({
   const activeTab = tab ?? 'overview';
   // Tabs follow the full type set, not just the primary one — a project
   // tagged both "Client" and "Bug Bounty" needs billing *and* submissions.
-  const showBilling = hasType(project, 'client');
+  // Quotes & invoices are for every project: client work, but also your own SaaS, game, book,
+  // marketing — their payments must be recordable too, or the totals and yearly targets miss them.
+  const showBilling = true;
   const showSubmissions = hasType(project, 'bounty');
   const tabs = ['overview', 'todo', 'milestones', ...(showBilling ? ['billing'] : []), ...(showSubmissions ? ['submissions'] : []), 'skills', 'settings'];
   const types = projectTypes(project);

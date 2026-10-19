@@ -4,7 +4,8 @@ import { Shell } from '@/components/Shell';
 import { SubmitButton } from '@/components/SubmitButton';
 import { ActionButton } from '@/components/ActionButton';
 import { getTags } from '@/features/tags/queries';
-import { addTag, deleteTag, setTagIsField } from '@/features/tags/actions';
+import { addTag, deleteTag, setTagIcon, setTagIsField } from '@/features/tags/actions';
+import { IconPicker, TagIcon, iconKeyFor } from '@/features/tags/icons';
 import { TAG_COLORS, fieldHref, type Tag } from '@/features/tags/types';
 
 /**
@@ -23,9 +24,9 @@ export default async function TagsPage() {
   const plain = tags.filter((t) => !t.is_field);
 
   const row = (t: Tag) => (
-    <div key={t.id} className="list-row">
+    <div key={t.id} className="list-row" style={{ flexWrap: 'wrap' }}>
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span className="type-dot" style={{ background: t.color, margin: 0 }} />
+        <TagIcon icon={iconKeyFor(t)} color={t.color} size={18} />
         <span style={{ fontWeight: 600 }}>{t.name}</span>
         {t.special === 'tpn' && <span className="tag idea">TPN · own goals &amp; page</span>}
         {t.special === 'bounty' && <span className="tag idea">Bug bounty · own pipeline page</span>}
@@ -44,6 +45,13 @@ export default async function TagsPage() {
           >×</ActionButton>
         )}
       </span>
+      <details style={{ flexBasis: '100%', margin: '2px 0 6px 26px' }}>
+        <summary className="text-muted" style={{ cursor: 'pointer', fontSize: 12 }}>Change icon</summary>
+        <form action={setTagIcon.bind(null, t.id)} style={{ marginTop: 8 }}>
+          <IconPicker defaultValue={iconKeyFor(t)} color={t.color} />
+          <SubmitButton className="btn-link" pendingLabel="Saving…">Save icon</SubmitButton>
+        </form>
+      </details>
     </div>
   );
 
@@ -60,15 +68,22 @@ export default async function TagsPage() {
 
       <div className="card" style={{ marginBottom: 20 }}>
         <h3>Add a tag</h3>
-        <form action={addTag} className="form-row" style={{ marginBottom: 0 }}>
-          <input name="name" placeholder="e.g. Photography, Mobile game, Book" maxLength={30} required />
-          <select name="color" defaultValue={TAG_COLORS[0]} aria-label="Colour">
-            {TAG_COLORS.map((c, i) => <option key={c} value={c} style={{ color: c }}>● Colour {i + 1}</option>)}
-          </select>
-          <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
-            <input type="checkbox" name="is_field" /> Give it its own page &amp; yearly targets
+        <form action={addTag} className="form-grid" style={{ maxWidth: '100%' }}>
+          <div className="form-row" style={{ marginBottom: 0 }}>
+            <input name="name" placeholder="e.g. Photography, Mobile game, Book" maxLength={30} required />
+            <select name="color" defaultValue={TAG_COLORS[0]} aria-label="Colour">
+              {TAG_COLORS.map((c, i) => <option key={c} value={c} style={{ color: c }}>● Colour {i + 1}</option>)}
+            </select>
+          </div>
+          <div>
+            <div className="text-muted" style={{ fontSize: 12, marginBottom: 6 }}>Pick an icon</div>
+            <IconPicker defaultValue="tag" />
+          </div>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
+            <input type="checkbox" name="is_field" defaultChecked />
+            Create a page for it — it appears in the sidebar with its own projects and yearly target
           </label>
-          <SubmitButton className="btn-inline" pendingLabel="Adding…">Add tag</SubmitButton>
+          <div><SubmitButton className="btn-inline" pendingLabel="Adding…">Add tag</SubmitButton></div>
         </form>
       </div>
 

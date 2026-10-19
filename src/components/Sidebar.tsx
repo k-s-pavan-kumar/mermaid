@@ -1,5 +1,7 @@
 import { getSessionEmail, getSessionDisplayName } from '@/lib/auth/session';
 import { fieldHref, type Tag } from '@/features/tags/types';
+import { getFieldsSafe } from '@/features/tags/queries';
+import { TagIcon, iconKeyFor } from '@/features/tags/icons';
 
 const ICONS: Record<string, React.ReactNode> = {
   today: (<><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 3" /></>),
@@ -47,12 +49,14 @@ const PERSONAL_LINKS = [
   { href: '/release-stats', label: 'Release Stats', key: 'release-stats' },
 ];
 
-export async function Sidebar({ active, alertCount = 0, fields = [] }: { active?: string; alertCount?: number; fields?: Tag[] }) {
+export async function Sidebar({ active, alertCount = 0, fields: fieldsProp }: { active?: string; alertCount?: number; fields?: Tag[] }) {
   const ownerId = await getSessionEmail();
   if (!ownerId) return null;
   // Display identity, not the owner id — under Supabase those differ and
   // the owner id is a UUID, which is not a useful thing to show a person.
   const label = (await getSessionDisplayName()) ?? 'account';
+  // The loading skeleton renders <Sidebar /> bare; load the fields here so the menu is identical before and after load.
+  const fields = fieldsProp ?? (await getFieldsSafe(ownerId));
 
   return (
     <div id="sidebar">
@@ -89,7 +93,7 @@ export async function Sidebar({ active, alertCount = 0, fields = [] }: { active?
           const on = active === `field:${f.id}` || (f.special === 'tpn' && active === 'audits') || (f.special === 'bounty' && active === 'bounty-pipeline');
           return (
             <a key={f.id} href={fieldHref(f)} className={`nav-item${on ? ' active' : ''}`}>
-              <span className="type-dot" style={{ background: f.color, margin: '0 8px 0 3px', width: 8, height: 8, flexShrink: 0 }} />
+              <span className="nav-icon"><TagIcon icon={iconKeyFor(f)} color={f.color} size={18} /></span>
               <span style={{ flex: 1 }}>{f.name}</span>
             </a>
           );

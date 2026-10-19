@@ -1196,3 +1196,16 @@ button.rs-pkg-icon{border:1px solid transparent;cursor:pointer;font-family:inher
 .tgt-row .num{text-align:right;font-variant-numeric:tabular-nums;}
 @media (max-width:820px){.tgt-row{grid-template-columns:1fr 1fr;}.tgt-row.head{display:none;}}
 @media (prefers-reduced-motion:reduce){.anim-bar,.anim-line,.anim-sweep,.anim-fade,.goal-bar span{animation:none;}}
+.anim-pop{transform-box:fill-box;transform-origin:50% 50%;animation:pie-pop .6s cubic-bezier(.2,.8,.2,1) both;animation-delay:calc(var(--i,0) * 90ms);}
+@keyframes pie-pop{from{transform:scale(.6);opacity:0;}}
+@media (prefers-reduced-motion:reduce){.anim-pop{animation:none;}}
+
+/* ---- Tag icon picker ---------------------------------------------------- */
+.icon-pick{display:grid;grid-template-columns:repeat(auto-fill,minmax(40px,1fr));gap:6px;max-width:460px;}
+.icon-pick label{position:relative;cursor:pointer;}
+.icon-pick input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer;}
+.icon-pick span{display:grid;place-items:center;height:38px;border:1px solid var(--border);border-radius:9px;background:var(--surface,#fff);color:var(--muted);transition:border-color .12s,background .12s;}
+.icon-pick label:hover span{background:var(--pine-soft);}
+.icon-pick input:checked + span{border-color:var(--pine);background:var(--pine-soft);box-shadow:0 0 0 1px var(--pine) inset;}
+.icon-pick input:focus-visible + span{outline:2px solid var(--pine);outline-offset:2px;}
+.nav-icon{margin:0 9px 0 0;}

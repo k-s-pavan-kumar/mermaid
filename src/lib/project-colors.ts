@@ -37,7 +37,7 @@ export const TYPE_LABEL: Record<ProjectType, string> = {
 /** One short line per type, shown under the picker so the labels aren't
  *  guesswork — "internal" vs "open source" is the pair people mix up most. */
 export const TYPE_HINT: Record<ProjectType, string> = {
-  client: 'Paid work for a client — unlocks quotes & invoices.',
+  client: 'Paid work for a client — shows up under that client.',
   internal: 'Your own private tools; nothing published, no client.',
   opensource: 'Public repo or package — releases, stars, downloads.',
   mobile: 'iOS / Android app.',
