@@ -256,6 +256,37 @@ async function main() {
   eq([cpf.get('a'), cpf.has('b')], ['y', false], "a client's field is the one most of their projects sit in");
   eq(TG.fieldForIncome(inc('a', '2026-03-01', 1, { linked_invoice_id: 'i4' }), { ...ctx, clientProjectField: new Map([['c2', 'mkt']]) }), 'mkt', "client invoice with no project or tag -> the field of the client's projects");
 
+  // ---- 11. outstanding per field, pending split, overall progress -------
+  eq(TG.pipeline(5884, 2000), { stillToInvoice: 3884, covered: false }, 'pending splits into outstanding (invoiced) and still-to-invoice');
+  eq(TG.pipeline(5884, 9000), { stillToInvoice: 0, covered: true }, 'outstanding can fully cover what is pending');
+  eq(TG.pipeline(0, 500).covered, false, 'nothing pending = nothing to cover');
+  const ov = TG.overallProgress([
+    { target: 100000, reached: 270300, pending: 0, outstanding: 0 },       // over goal
+    { target: 100000, reached: 35000, pending: 65000, outstanding: 20000 },
+    { target: 100000, reached: 95616, pending: 4384, outstanding: 1000 },
+    { target: 0, reached: 50000, pending: 0, outstanding: 7000 },            // no goal: left out
+  ]);
+  eq([ov.target, ov.counted, ov.pending, ov.over, ov.outstanding, ov.pct], [300000, 230616, 69384, 170300, 21000, 77], "a field over its goal counts only up to that goal, so it can't hide another field's shortfall");
+
+  const OW = 'out-owner';
+  const ownerFields = await TQ.getFields(OW);
+  const saasId = ownerFields.find((f) => f.name === 'SaaS')!.id;
+  const mktId = ownerFields.find((f) => f.name === 'Digital Marketing')!.id;
+  await table('projects').insert({ id: 'op1', owner_id: OW, name: 'Own SaaS', type: 'web', types: ['web'], client_id: null, status: 'ontrack', description: null, created_at: '', field_id: saasId } as never);
+  await table('clients').insert({ id: 'oc1', owner_id: OW, name: 'Mkt Client', work_types: ['Digital Marketing'] } as never);
+  const mkInv = (over: Record<string, unknown>) => ({ owner_id: OW, project_id: null, client_id: null, stream: 'freelance', number: 'N', description: null, items: [], amount: 5000, tax_pct: 0, currency: 'INR', notes: null, issued_at: '2026-09-01', quote_id: null, status: 'pending', due_at: null, paid_at: null, tds_amount: 0, ...over }) as never;
+  await table('invoices').insert(mkInv({ id: 'oi1', project_id: 'op1' }));                                  // 5000 unpaid on own SaaS project
+  await table('invoices').insert(mkInv({ id: 'oi2', client_id: 'oc1', amount: 8000, status: 'partial' }));   // 8000, 3000 paid -> 5000 owed, via client tag
+  await table('invoices').insert(mkInv({ id: 'oi3', project_id: 'op1', status: 'paid', amount: 4000 }));    // paid: owes nothing
+  await table('invoices').insert(mkInv({ id: 'oi4', project_id: 'op1', status: 'draft', amount: 9000 }));   // draft: counts for nothing
+  await table('invoices').insert(mkInv({ id: 'oi5', amount: 700 }));                                         // no project/client: in no field
+  await table('finance_entries').insert({ id: 'oe1', owner_id: OW, type: 'income', source: 'invoice_payment', amount: 3000, date: '2026-09-10', category: 'Freelance', linked_invoice_id: 'oi2' } as never);
+  const TQY = await import('../src/features/targets/queries');
+  const td = await TQY.loadTargetData(OW, 2026);
+  eq(td.outstanding.get(saasId), 5000, 'unpaid invoice on an own project is outstanding for that project\'s field (paid and draft ones are not)');
+  eq(td.outstanding.get(mktId), 5000, "partly-paid client invoice: only the unpaid 5,000 is outstanding, credited via the client's field tag");
+  eq(td.monthly.get(mktId)?.[8], 3000, 'and its 3,000 payment is reached in September, in the same field');
+
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');
   process.exit(failed ? 1 : 0);
 }

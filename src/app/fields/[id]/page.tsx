@@ -38,7 +38,7 @@ export default async function FieldPage({
 
   return (
     <Shell active={`field:${field.id}`} title={field.name} crumb="Fields">
-      <FieldTargetCards name={field.name} year={year} s={summary} />
+      <FieldTargetCards name={field.name} year={year} s={summary} outstanding={targetData.outstanding.get(field.id) ?? 0} />
 
       <div className="grid-2-eq" style={{ marginBottom: 24, gap: 16, alignItems: 'start' }}>
         <FieldProjects field={field} projects={projects} clients={clients} />

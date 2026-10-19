@@ -3,7 +3,7 @@ import { getFieldsSafe } from '@/features/tags/queries';
 import type { Tag } from '@/features/tags/types';
 import type { FinanceEntry } from '@/features/daily-finance/types';
 import { addAuditPayments, clientProjectFields, fieldForIncome, monthlyByField, type AttributionContext, type IncomeRow } from './compute';
-import { balanceDue, type Invoice } from '@/features/billing/types';
+import { balanceDue, invoiceMoney, type Invoice } from '@/features/billing/types';
 
 export interface FieldTarget { id: string; owner_id: string; field_id: string; year: number; amount: number; created_at: string }
 
@@ -13,6 +13,8 @@ export interface TargetData {
   targets: Map<string, number>;
   /** field id -> money received per month. */
   monthly: Map<string, number[]>;
+  /** field id -> invoiced but not yet received, right now (all open invoices, whatever year they were issued). */
+  outstanding: Map<string, number>;
   /** Money received this year that no field claims — shown so nothing silently goes missing. */
   unassigned: { id: string; date: string; amount: number; label: string; href: string | null }[];
 }
@@ -65,6 +67,15 @@ export async function loadTargetData(ownerId: string, year: number): Promise<Tar
 
   const monthly = monthlyByField(rows, ctx, year);
 
+  // Outstanding: what open invoices still owe, credited to a field by the same rules as received money.
+  const outstanding = new Map<string, number>(fields.map((f) => [f.id, 0]));
+  for (const inv of invoices) {
+    const owed = invoiceMoney(inv, recordedEver.get(inv.id) ?? 0).outstanding;
+    if (owed <= 0) continue;
+    const fid = fieldForIncome({ id: inv.id, date: inv.issued_at ?? '', amount: owed, source: 'invoice_payment', linked_invoice_id: inv.id }, ctx);
+    if (fid && outstanding.has(fid)) outstanding.set(fid, Math.round(((outstanding.get(fid) ?? 0) + owed) * 100) / 100);
+  }
+
   const clientName = new Map(clients.map((c) => [c.id, c.name]));
   const invById = new Map(invoices.map((i) => [i.id, i]));
   const unassigned = rows
@@ -82,8 +93,15 @@ export async function loadTargetData(ownerId: string, year: number): Promise<Tar
 
   try {
     const audits = await table<{ id: string; owner_id: string; paid_amount: number; paid_on: string | null }>('audits').where((a) => a.owner_id === ownerId);
-    addAuditPayments(monthly, fields.find((f) => f.special === 'tpn')?.id ?? null, audits, year);
+    const tpnId = fields.find((f) => f.special === 'tpn')?.id ?? null;
+    addAuditPayments(monthly, tpnId, audits, year);
+    if (tpnId) {
+      // TPN audits keep their own invoice figures: invoiced minus received, on audits not lost.
+      const open = await table<{ id: string; owner_id: string; stage: string; invoice_amount: number | null; paid_amount: number }>('audits').where((a) => a.owner_id === ownerId && a.stage !== 'lost');
+      const owed = open.reduce((n, a) => n + Math.max(0, (a.invoice_amount ?? 0) - (a.paid_amount ?? 0)), 0);
+      outstanding.set(tpnId, Math.round(((outstanding.get(tpnId) ?? 0) + owed) * 100) / 100);
+    }
   } catch { /* audits table not there yet */ }
 
-  return { fields, targets, monthly, unassigned };
+  return { fields, targets, monthly, outstanding, unassigned };
 }

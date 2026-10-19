@@ -160,3 +160,31 @@ export function clientProjectFields(projects: { client_id?: string | null; field
   }
   return out;
 }
+
+/**
+ * How the money still to earn splits: part is already invoiced and waiting
+ * (outstanding), the rest has not been billed yet.
+ */
+export function pipeline(pending: number, outstanding: number): { stillToInvoice: number; covered: boolean } {
+  const stillToInvoice = Math.max(0, Math.round((pending - outstanding) * 100) / 100);
+  return { stillToInvoice, covered: pending > 0 && outstanding >= pending };
+}
+
+/**
+ * Overall progress across fields that have a goal. Each field counts toward
+ * its own goal only up to that goal: a field that overshoots must not hide
+ * what another field still lacks. Fields without a goal are left out.
+ */
+export function overallProgress(rows: { target: number; reached: number; pending: number; outstanding: number }[]) {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const withGoal = rows.filter((r) => r.target > 0);
+  const target = withGoal.reduce((a, r) => a + r.target, 0);
+  const counted = withGoal.reduce((a, r) => a + Math.min(r.reached, r.target), 0);
+  const pending = withGoal.reduce((a, r) => a + r.pending, 0);
+  const over = withGoal.reduce((a, r) => a + Math.max(0, r.reached - r.target), 0);
+  const outstanding = withGoal.reduce((a, r) => a + r.outstanding, 0);
+  return {
+    target: r2(target), counted: r2(counted), pending: r2(pending), over: r2(over), outstanding: r2(outstanding),
+    pct: target > 0 ? Math.min(100, Math.round((counted / target) * 100)) : 0,
+  };
+}

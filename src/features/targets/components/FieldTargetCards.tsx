@@ -1,12 +1,12 @@
 import { ProgressChart, inr0 } from './charts';
-import type { TargetSummary } from '../compute';
+import { pipeline, type TargetSummary } from '../compute';
 
 /**
  * The three cards at the top of every field page — yearly goal, reached,
  * pending — plus the month-by-month chart. "Reached" is money actually
  * received (see compute.ts), so these move on their own as invoices get paid.
  */
-export function FieldTargetCards({ name, year, s }: { name: string; year: number; s: TargetSummary | null }) {
+export function FieldTargetCards({ name, year, s, outstanding = 0 }: { name: string; year: number; s: TargetSummary | null; outstanding?: number }) {
   if (!s || s.target <= 0) {
     return (
       <div className="card" style={{ marginBottom: 20 }}>
@@ -18,13 +18,29 @@ export function FieldTargetCards({ name, year, s }: { name: string; year: number
     );
   }
   const ahead = s.gap >= 0;
+  const pipe = pipeline(s.pending, outstanding);
+  const over = Math.max(0, s.reached - s.target);
   return (
     <div style={{ marginBottom: 22 }}>
       <div className="stat-row">
         <div className="stat-box"><div className="lbl">{year} goal</div><div className="val">{inr0(s.target)}</div></div>
-        <div className="stat-box"><div className="lbl">Reached</div><div className="val" style={{ color: 'var(--sage)' }}>{inr0(s.reached)}</div><div className="text-muted" style={{ fontSize: 11.5 }}>{s.pct}% of goal</div></div>
-        <div className="stat-box"><div className="lbl">Pending</div><div className="val" style={{ color: s.pending > 0 ? 'var(--crimson)' : 'var(--sage)' }}>{inr0(s.pending)}</div>
-          <div className="text-muted" style={{ fontSize: 11.5 }}>{s.pending === 0 ? 'Goal reached' : s.neededPerMonth ? `≈ ${inr0(s.neededPerMonth)} / month to finish` : 'Year is over'}</div></div>
+        <div className="stat-box">
+          <div className="lbl">Reached · received</div>
+          <div className="val" style={{ color: 'var(--sage)' }}>{inr0(s.reached)}</div>
+          <div className="text-muted" style={{ fontSize: 11.5 }}>{over > 0 ? `${inr0(over)} over the goal` : `${s.pct}% of goal`}</div>
+        </div>
+        <div className="stat-box">
+          <div className="lbl">Pending · still to earn</div>
+          <div className="val" style={{ color: s.pending > 0 ? 'var(--crimson)' : 'var(--sage)' }}>{inr0(s.pending)}</div>
+          <div className="text-muted" style={{ fontSize: 11.5 }}>{s.pending === 0 ? 'Goal reached ✓' : s.neededPerMonth ? `≈ ${inr0(s.neededPerMonth)} / month to finish` : 'Year is over'}</div>
+        </div>
+        <div className="stat-box">
+          <div className="lbl">Outstanding · invoiced, unpaid</div>
+          <div className="val" style={{ color: outstanding > 0 ? 'var(--gold, #D99A18)' : undefined }}>{inr0(outstanding)}</div>
+          <div className="text-muted" style={{ fontSize: 11.5 }}>
+            {s.pending === 0 ? 'Waiting for payment' : pipe.covered ? 'Covers the pending amount ✓' : `Still to invoice ${inr0(pipe.stillToInvoice)}`}
+          </div>
+        </div>
       </div>
       <div className="card" style={{ marginTop: 12 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', marginBottom: 8 }}>

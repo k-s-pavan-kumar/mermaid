@@ -21,7 +21,7 @@ export async function SpecialFieldTop({ email, special }: { email: string; speci
   const s = summarise(data.targets.get(field.id) ?? 0, data.monthly.get(field.id) ?? Array.from({ length: 12 }, () => 0), nowIndex(year, today));
   return (
     <div style={{ marginBottom: 24 }}>
-      <FieldTargetCards name={field.name} year={year} s={s} />
+      <FieldTargetCards name={field.name} year={year} s={s} outstanding={data.outstanding.get(field.id) ?? 0} />
       <FieldProjects field={field} projects={projects} clients={clients} />
     </div>
   );
