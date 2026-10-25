@@ -9,6 +9,8 @@ export interface Product {
   owner_id: string;
   name: string;
   description: string | null;
+  /** Target launch day; drives the launch plan, the calendar and the digest. */
+  launch_date?: string | null;
   created_at: string;
 }
 

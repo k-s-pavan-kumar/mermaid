@@ -9,6 +9,16 @@ import { getProjects } from '@/features/projects/queries';
 import { getProducts } from '@/features/products/queries';
 import { addProductPiece, attachProjectToProduct, detachProject, deleteProduct } from '@/features/products/actions';
 import { LANES, ROLES, productProgress, roleInfo } from '@/features/products/types';
+import { LaunchPlanCard } from '@/features/launch/components/LaunchPlanCard';
+import { launchPlan } from '@/features/launch/compute';
+import { FieldCosts } from '@/features/targets/components/FieldCosts';
+import { getFieldCosts, loadTargetData } from '@/features/targets/queries';
+import { profitOf } from '@/features/targets/compute';
+import { inr0 } from '@/features/targets/components/charts';
+import { table } from '@/lib/data';
+import { todayIso } from '@/lib/tz/today';
+import type { Milestone } from '@/features/projects/types';
+import type { Task } from '@/features/today/types';
 
 const STATUS: Record<string, string> = { idea: 'Idea', ontrack: 'On track', review: 'In review', risk: 'At risk', done: 'Done', dropped: 'Dropped' };
 
@@ -28,6 +38,26 @@ export default async function ProductPage({
   const spare = projects.filter((p) => !p.product_id);
   const pct = productProgress(pieces.map((p) => p.status));
 
+  // Launch plan + money for this product
+  const today = todayIso();
+  const year = Number(today.slice(0, 4));
+  const pieceIds = new Set(pieces.map((p) => p.id));
+  const [milestones, tasks, targetData, costs] = await Promise.all([
+    table<Milestone>('milestones').where((m) => pieceIds.has(m.project_id)),
+    table<Task>('tasks').where((t) => t.owner_id === email && !!t.project_id && pieceIds.has(t.project_id)),
+    loadTargetData(email, year),
+    getFieldCosts(email, year, { productId: id }),
+  ]);
+  const plan = launchPlan(product.launch_date ?? null, today, pieces.map((p) => ({
+    id: p.id, name: p.name, role: p.product_role ?? null, status: p.status,
+    milestonesDone: milestones.filter((m) => m.project_id === p.id && m.occurred_on).length,
+    milestonesTotal: milestones.filter((m) => m.project_id === p.id).length,
+    tasksDone: tasks.filter((t) => t.project_id === p.id && t.done).length,
+    tasksOpen: tasks.filter((t) => t.project_id === p.id && !t.done).length,
+  })));
+  const revenue = targetData.productRevenue.get(id) ?? 0;
+  const money = profitOf(revenue, targetData.productCosts.get(id) ?? 0);
+
   return (
     <Shell active="products" title={product.name} crumb="Products"
       action={
@@ -42,6 +72,8 @@ export default async function ProductPage({
         <div className="goal-bar"><span style={{ width: `${pct}%` }} /></div>
         <span className="text-muted" style={{ fontSize: 12, whiteSpace: 'nowrap' }}>{pct}% of pieces done</span>
       </div>
+
+      <LaunchPlanCard productId={id} plan={plan} />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 14, alignItems: 'start', marginBottom: 14 }}>
         {LANES.map((lane) => {
@@ -88,6 +120,13 @@ export default async function ProductPage({
           <SubmitButton className="btn-ghost" pendingLabel="Adding…">Add to product</SubmitButton>
         </form>
       )}
+
+      <div className="insight-row" style={{ marginBottom: 14 }}>
+        <div className="insight"><span className="k">Revenue {year}</span><strong>{inr0(money.revenue)}</strong><span className="text-muted">payments on this product&apos;s projects</span></div>
+        <div className="insight"><span className="k">Costs</span><strong>{inr0(money.costs)}</strong></div>
+        <div className="insight"><span className="k">Profit</span><strong style={{ color: money.profit >= 0 ? 'var(--sage)' : 'var(--crimson)' }}>{inr0(money.profit)}</strong>{money.marginPct !== null && <span className="text-muted">{money.marginPct}% margin</span>}</div>
+      </div>
+      <FieldCosts productId={id} costs={costs} today={today} year={year} />
 
       <section>
         <h2 style={{ fontFamily: "'Fraunces',serif", fontSize: 18, margin: '0 0 10px' }}>{product.name} — yearly goals</h2>

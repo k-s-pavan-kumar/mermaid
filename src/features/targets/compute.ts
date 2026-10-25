@@ -188,3 +188,134 @@ export function overallProgress(rows: { target: number; reached: number; pending
     pct: target > 0 ? Math.min(100, Math.round((counted / target) * 100)) : 0,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Monthly shape (non-flat plans), forecast, receivables, profit, hours
+// ---------------------------------------------------------------------------
+
+/** Cumulative plan share by month from 12 weights (null/invalid = even). Index i = share by end of month i, 0..1. */
+export function planShares(weights: number[] | null | undefined): number[] {
+  const w = weights && weights.length === 12 && weights.every((x) => Number.isFinite(x) && x >= 0) && weights.some((x) => x > 0)
+    ? weights : Array.from({ length: 12 }, () => 1);
+  const total = w.reduce((a, b) => a + b, 0);
+  let run = 0;
+  return w.map((x) => { run += x; return run / total; });
+}
+
+export const WEIGHT_PRESETS: { key: string; label: string; weights: number[] }[] = [
+  { key: 'even', label: 'Even every month', weights: Array.from({ length: 12 }, () => 1) },
+  { key: 'back', label: 'Back-loaded (builds up)', weights: [1, 1, 1, 1, 1, 1, 1.5, 1.5, 1.5, 2, 2, 2] },
+  { key: 'front', label: 'Front-loaded', weights: [2, 2, 2, 1.5, 1.5, 1.5, 1, 1, 1, 1, 1, 1] },
+  { key: 'launch', label: 'Quiet, then a launch spike (Q4)', weights: [0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1, 2, 3, 3] },
+];
+
+/** Same as summarise(), but the plan line follows `weights` instead of a straight line. */
+export function summariseShaped(target: number, monthly: number[], nowIdx: number, weights?: number[] | null): TargetSummary {
+  const base = summarise(target, monthly, nowIdx);
+  if (!weights) return base;
+  const shares = planShares(weights);
+  const pace = shares.map((sh) => Math.round(target * sh * 100) / 100);
+  const expectedToDate = nowIdx >= 0 ? pace[nowIdx]! : 0;
+  return { ...base, pace, expectedToDate, gap: Math.round((base.reached - expectedToDate) * 100) / 100 };
+}
+
+export interface Forecast {
+  /** Where the year ends if the pace so far simply continues. */
+  projected: number;
+  shortBy: number;
+  onPace: boolean;
+  /** Still to bill beyond what is already outstanding to reach the goal. */
+  toBill: number;
+  /** null when the year is over or hasn't started. */
+  basis: 'run-rate' | 'final' | 'none';
+}
+
+/** Straight run-rate: reached ÷ time elapsed, carried to December. Honest about being a projection. */
+export function forecast(target: number, reached: number, outstanding: number, year: number, today: string): Forecast {
+  const ty = Number(today.slice(0, 4));
+  const pending = Math.max(0, target - reached);
+  const toBill = Math.max(0, Math.round((pending - outstanding) * 100) / 100);
+  if (year < ty) return { projected: reached, shortBy: Math.max(0, target - reached), onPace: reached >= target, toBill: 0, basis: 'final' };
+  if (year > ty) return { projected: 0, shortBy: target, onPace: false, toBill, basis: 'none' };
+  const m = Number(today.slice(5, 7)) - 1;
+  const day = Number(today.slice(8, 10));
+  const dim = new Date(year, m + 1, 0).getDate();
+  const elapsed = m + day / dim; // months elapsed, fractional
+  if (elapsed <= 0) return { projected: 0, shortBy: target, onPace: false, toBill, basis: 'none' };
+  const projected = Math.round((reached + (reached / elapsed) * (12 - elapsed)) * 100) / 100;
+  return { projected, shortBy: Math.max(0, Math.round((target - projected) * 100) / 100), onPace: projected >= target, toBill, basis: 'run-rate' };
+}
+
+// ----- receivables (aging) -------------------------------------------------
+
+export type AgingBucket = 'notdue' | 'd30' | 'd60' | 'd60plus';
+export const AGING_LABEL: Record<AgingBucket, string> = { notdue: 'Not due yet', d30: '1–30 days late', d60: '31–60 days late', d60plus: '60+ days late' };
+
+export interface Receivable {
+  id: string;
+  number: string;
+  who: string;
+  owed: number;
+  issued: string | null;
+  due: string | null;
+  /** Days past the due date (due date, else issue date); 0 or less = not late. */
+  daysLate: number;
+  bucket: AgingBucket;
+  fieldId: string | null;
+  href: string | null;
+}
+
+export function daysBetween(fromIso: string, toIso: string): number {
+  return Math.round((Date.parse(toIso + 'T00:00:00Z') - Date.parse(fromIso + 'T00:00:00Z')) / 86400000);
+}
+
+export function agingBucket(daysLate: number): AgingBucket {
+  return daysLate <= 0 ? 'notdue' : daysLate <= 30 ? 'd30' : daysLate <= 60 ? 'd60' : 'd60plus';
+}
+
+export function makeReceivable(
+  r: { id: string; number: string; who: string; owed: number; issued: string | null; due: string | null; fieldId: string | null; href: string | null },
+  today: string,
+): Receivable {
+  const basis = r.due ?? r.issued;
+  const daysLate = basis ? daysBetween(basis, today) : 0;
+  return { ...r, daysLate, bucket: agingBucket(daysLate) };
+}
+
+export function agingTotals(rs: Receivable[]): Record<AgingBucket, { count: number; amount: number }> {
+  const out: Record<AgingBucket, { count: number; amount: number }> = {
+    notdue: { count: 0, amount: 0 }, d30: { count: 0, amount: 0 }, d60: { count: 0, amount: 0 }, d60plus: { count: 0, amount: 0 },
+  };
+  for (const r of rs) { out[r.bucket].count++; out[r.bucket].amount = Math.round((out[r.bucket].amount + r.owed) * 100) / 100; }
+  return out;
+}
+
+/** A polite, ready-to-send reminder. Plain text so it pastes into WhatsApp, email or SMS. */
+export function reminderText(r: Pick<Receivable, 'number' | 'who' | 'owed' | 'due' | 'daysLate'>, sender?: string): string {
+  const amt = '₹' + Math.round(r.owed).toLocaleString('en-IN');
+  const when = r.due ? ` (due ${r.due})` : '';
+  const late = r.daysLate > 0 ? ` It is now ${r.daysLate} day${r.daysLate === 1 ? '' : 's'} past the due date.` : '';
+  return `Hi ${r.who || 'there'}, a gentle reminder that invoice ${r.number} for ${amt}${when} is still open.${late} Could you let me know when I can expect the payment? Happy to resend the invoice if useful. Thank you!${sender ? `\n\n${sender}` : ''}`;
+}
+
+// ----- profit, hours, recurring --------------------------------------------
+
+export interface Profit { revenue: number; costs: number; profit: number; marginPct: number | null }
+
+export function profitOf(revenue: number, costs: number): Profit {
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  return { revenue: r2(revenue), costs: r2(costs), profit: r2(revenue - costs), marginPct: revenue > 0 ? Math.round(((revenue - costs) / revenue) * 100) : null };
+}
+
+/** Effective hourly rate: money ÷ hours, whole rupees; null with no hours or no money. */
+export function effectiveRate(money: number, minutes: number): number | null {
+  return minutes > 0 && money > 0 ? Math.round(money / (minutes / 60)) : null;
+}
+
+/** Average of the last `n` months up to and including `nowIdx` (default 3), for recurring monthly revenue. */
+export function recentMonthlyAverage(monthly: number[], nowIdx: number, n = 3): number {
+  if (nowIdx < 0) return 0;
+  const from = Math.max(0, nowIdx - n + 1);
+  const slice = monthly.slice(from, nowIdx + 1);
+  return slice.length ? Math.round(slice.reduce((a, b) => a + b, 0) / slice.length) : 0;
+}

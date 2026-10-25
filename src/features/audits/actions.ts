@@ -7,6 +7,10 @@ import { newId } from '@/lib/id';
 import { todayIso } from '@/lib/tz/today';
 import type { Goal } from '@/features/goals/types';
 import { monthKey } from '@/features/goals/types';
+import { readChecklist, toggleItem, addItem, removeItem } from '@/features/launch/checklist';
+import { createInvoice } from '@/features/billing/actions';
+import { createProjectRecord } from '@/features/projects/service';
+import type { Invoice } from '@/features/billing/types';
 import { AUDIT_STAGES, type Audit, type AuditStage } from './types';
 
 async function requireOwner(): Promise<string> {
@@ -99,4 +103,70 @@ export async function deleteAudit(id: string): Promise<void> {
   if (!row || row.owner_id !== owner) return;
   await table<Audit>('audits').remove(id);
   refresh();
+}
+
+async function ownAudit(owner: string, id: string): Promise<Audit | undefined> {
+  const a = await table<Audit>('audits').find(id);
+  return a && a.owner_id === owner ? a : undefined;
+}
+
+export async function toggleAuditCheck(auditId: string, itemId: string): Promise<void> {
+  const owner = await requireOwner();
+  const a = await ownAudit(owner, auditId);
+  if (!a) return;
+  await table<Audit>('audits').update(auditId, { checklist: toggleItem(readChecklist(a.checklist), itemId) });
+  refresh();
+}
+
+export async function addAuditCheck(auditId: string, formData: FormData): Promise<void> {
+  const owner = await requireOwner();
+  const a = await ownAudit(owner, auditId);
+  if (!a) return;
+  await table<Audit>('audits').update(auditId, { checklist: addItem(readChecklist(a.checklist), String(formData.get('label') ?? ''), `c${newId().slice(0, 8)}`) });
+  refresh();
+}
+
+export async function removeAuditCheck(auditId: string, itemId: string): Promise<void> {
+  const owner = await requireOwner();
+  const a = await ownAudit(owner, auditId);
+  if (!a) return;
+  await table<Audit>('audits').update(auditId, { checklist: removeItem(readChecklist(a.checklist), itemId) });
+  refresh();
+}
+
+/**
+ * Turn an audit's quote/invoice into a real invoice in Billing. A project is
+ * made in the TPN field for it, so payments flow through Billing → Daily
+ * Finance → the yearly targets like any other invoice. From then on Billing
+ * owns the money; the audit's own paid/invoice figures stop being counted.
+ * Only offered while nothing has been recorded as received on the audit, so
+ * no payment is ever counted twice.
+ */
+export async function createInvoiceFromAudit(auditId: string): Promise<void> {
+  const owner = await requireOwner();
+  const a = await ownAudit(owner, auditId);
+  const amount = a ? a.invoice_amount ?? a.quote_amount ?? 0 : 0;
+  if (!a || a.billing_invoice_id || a.paid_amount > 0 || amount <= 0) return;
+
+  const tpn = (await table<{ id: string; owner_id: string; special: string | null }>('tags').where((t) => t.owner_id === owner && t.special === 'tpn'))[0];
+  const { project } = await createProjectRecord(owner, { name: `TPN audit — ${a.company || a.client_name}`.slice(0, 120), type: 'assess', fieldId: tpn?.id ?? null });
+  const clients = await table<{ id: string; owner_id: string; name: string }>('clients').where((c) => c.owner_id === owner && c.name.toLowerCase() === a.client_name.toLowerCase());
+
+  const fd = new FormData();
+  fd.set('project_id', project.id);
+  if (clients[0]) fd.set('client_id', clients[0].id);
+  fd.set('amount', String(amount));
+  fd.set('description', `TPN audit${a.scope ? ` — ${a.scope}` : ''}`);
+  fd.set('stream', 'freelance');
+  fd.set('status', 'pending');
+  fd.set('issued_at', a.invoice_sent_on ?? todayIso());
+  const invoiceId = await createInvoice(fd);
+  if (!invoiceId) return;
+  const inv = await table<Invoice>('invoices').find(invoiceId);
+  await table<Audit>('audits').update(auditId, {
+    billing_invoice_id: invoiceId, invoice_ref: inv?.number ?? a.invoice_ref,
+    stage: a.stage === 'paid' || a.stage === 'lost' ? a.stage : 'invoiced',
+  });
+  refresh();
+  revalidatePath('/billing');
 }

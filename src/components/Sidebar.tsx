@@ -10,6 +10,7 @@ const ICONS: Record<string, React.ReactNode> = {
   audits: (<><path d="M12 3l8 3v6c0 4.5-3.2 8-8 9-4.8-1-8-4.5-8-9V6z" /><path d="M8.5 12l2.5 2.5L15.5 10" /></>),
   tags: (<><path d="M3 12V4h8l10 10-8 8z" /><circle cx="7.5" cy="8.5" r="1.3" /></>),
   products: (<><path d="M12 3l9 5-9 5-9-5z" /><path d="M3 13l9 5 9-5" /><path d="M3 17.5l9 5 9-5" /></>),
+  digest: (<><path d="M5 4h14v16H5z" /><path d="M8.5 9h7" /><path d="M8.5 12.5h7" /><path d="M8.5 16h4" /></>),
   goals: (<><circle cx="12" cy="12" r="9" /><circle cx="12" cy="12" r="5" /><circle cx="12" cy="12" r="1.4" /></>),
   clients: (<><circle cx="9" cy="8" r="3.2" /><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" /><circle cx="17.5" cy="9" r="2.6" /><path d="M15 20c.3-2.6 1.9-4.5 4-5" /></>),
   calendar: (<><rect x="3" y="4" width="18" height="17" rx="2" /><path d="M3 9h18M8 2v4M16 2v4" /></>),
@@ -32,6 +33,7 @@ const LINKS = [
   { href: '/projects', label: 'Projects', key: 'projects', hint: 'g p' },
   { href: '/products', label: 'Products', key: 'products', hint: 'g m' },
   { href: '/goals', label: 'Goals', key: 'goals', hint: 'g o' },
+  { href: '/digest', label: 'Weekly digest', key: 'digest', hint: 'g y' },
   { href: '/billing', label: 'Billing', key: 'billing', hint: 'g b' },
   { href: '/notes', label: 'Notes & SOPs', key: 'notes', hint: 'g n' },
 ];

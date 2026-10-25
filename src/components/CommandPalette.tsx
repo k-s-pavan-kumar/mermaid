@@ -67,7 +67,7 @@ export function CommandPalette({ items }: { items: PaletteItem[] }) {
       if (pendingG.current) {
         pendingG.current = false;
         const map: Record<string, string> = {
-          t: '/today', d: '/dashboard', a: '/calendar', p: '/projects', o: '/goals', m: '/products', w: '/tpn-audits', c: '/clients', b: '/billing', n: '/notes', s: '/settings',
+          t: '/today', d: '/dashboard', a: '/calendar', p: '/projects', o: '/goals', y: '/digest', m: '/products', w: '/tpn-audits', c: '/clients', b: '/billing', n: '/notes', s: '/settings',
           f: '/daily-finance', u: '/bounty-pipeline', v: '/reward-vault', l: '/learning-tracker', r: '/release-stats', j: '/journal',
         };
         const dest = map[e.key.toLowerCase()];
@@ -123,6 +123,7 @@ export function CommandPalette({ items }: { items: PaletteItem[] }) {
               ['g then p', 'Go to Projects'],
               ['g then m', 'Go to Products'],
               ['g then o', 'Go to Goals'],
+              ['g then y', 'Go to Weekly digest'],
               ['g then c', 'Go to Clients'],
               ['g then w', 'Go to TPN Audits'],
               ['g then a', 'Go to Calendar'],

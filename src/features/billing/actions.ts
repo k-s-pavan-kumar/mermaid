@@ -149,6 +149,8 @@ export async function createInvoice(formData: FormData): Promise<string | null> 
     due_at: String(formData.get('due_at') ?? '').trim() || null,
     paid_at: null,
     tds_amount: 0,
+    // Only written when ticked, so databases without migration 024 keep working.
+    ...(formData.get('recurring') === 'on' ? { recurring: true } : {}),
   });
 
   if (wantsPaid) {

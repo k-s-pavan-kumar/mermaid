@@ -42,6 +42,8 @@ const db: LocalDB = {
   tags: [],
   products: [],
   field_targets: [],
+  field_costs: [],
+  tds_checks: [],
 };
 
 writeDb(db);

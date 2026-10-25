@@ -6,6 +6,7 @@ import { getSessionEmail } from '@/lib/auth/session';
 import { newId } from '@/lib/id';
 import { TAG_COLORS, fieldProjectType, isHex, normaliseTagName, type Tag } from './types';
 import { createProjectRecord } from '@/features/projects/service';
+import { renameProblem, replaceTagInList } from './ops';
 import { defaultIconFor, isIconKey } from './icons';
 
 async function requireOwner(): Promise<string> {
@@ -173,4 +174,47 @@ export async function setTagIcon(id: string, formData: FormData): Promise<void> 
   if (!t || t.owner_id !== owner || !isIconKey(icon)) return;
   await table<Tag>('tags').update(id, { icon });
   refresh();
+}
+
+type ClientTags = { id: string; owner_id: string; work_types?: string[] };
+
+/** Rewrite one tag name to another in every client's Type of work. */
+async function retagClients(owner: string, from: string, to: string): Promise<void> {
+  const clients = await table<ClientTags>('clients').where((c) => c.owner_id === owner && (c.work_types ?? []).some((t) => t.toLowerCase() === from.toLowerCase()));
+  for (const c of clients) await table<ClientTags>('clients').update(c.id, { work_types: replaceTagInList(c.work_types ?? [], from, to) });
+}
+
+/** Rename a tag everywhere — the tag itself and every client that carries it. Form: name. */
+export async function renameTag(id: string, formData: FormData): Promise<void> {
+  const owner = await requireOwner();
+  const t = await table<Tag>('tags').find(id);
+  if (!t || t.owner_id !== owner) return;
+  const name = normaliseTagName(String(formData.get('name') ?? ''));
+  const all = await table<Tag>('tags').where((x) => x.owner_id === owner && x.id !== id);
+  if (renameProblem(name, all.map((x) => x.name)) || name === t.name) return;
+  await table<Tag>('tags').update(id, { name });
+  await retagClients(owner, t.name, name);
+  refresh();
+  revalidatePath('/fields/[id]', 'page');
+}
+
+/**
+ * Merge a tag into another: clients, goals and projects move to the target,
+ * then the source tag is removed. The TPN / Bug Bounty fields can't be merged away.
+ * Form: into (the surviving tag's id).
+ */
+export async function mergeTag(sourceId: string, formData: FormData): Promise<void> {
+  const owner = await requireOwner();
+  const [src, dst] = await Promise.all([table<Tag>('tags').find(sourceId), table<Tag>('tags').find(String(formData.get('into') ?? ''))]);
+  if (!src || !dst || src.id === dst.id || src.owner_id !== owner || dst.owner_id !== owner || src.special) return;
+  await retagClients(owner, src.name, dst.name);
+  type Linked = { id: string; owner_id: string; field_id?: string | null };
+  for (const name of ['goals', 'projects'] as const) {
+    const rows = await table<Linked>(name).where((r) => r.owner_id === owner && r.field_id === src.id);
+    for (const r of rows) await table<Linked>(name).update(r.id, { field_id: dst.is_field ? dst.id : null });
+  }
+  if (src.is_field && !dst.is_field) await table<Tag>('tags').update(dst.id, { is_field: true });
+  await table<Tag>('tags').remove(src.id);
+  refresh();
+  revalidatePath('/fields/[id]', 'page');
 }

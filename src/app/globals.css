@@ -1225,3 +1225,22 @@ button.rs-pkg-icon{border:1px solid transparent;cursor:pointer;font-family:inher
   .tgt-row .num::before{content:attr(data-label);display:block;font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;}
   .tgt-row .set{grid-column:1 / -1;padding-left:0;}
 }
+
+/* ---- Field insight chips ----------------------------------------------- */
+.insight-row{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;}
+.insight{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;padding:8px 13px;border:1px solid var(--border-light);border-radius:10px;background:#F8F9F7;font-size:12.5px;}
+.insight .k{font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);}
+.insight strong{font-family:'Fraunces',serif;font-size:16px;}
+.insight strong small{font-size:11px;font-weight:500;color:var(--muted);margin-left:2px;}
+
+.tgt-row.pt-row{grid-template-columns:minmax(150px,1.4fr) repeat(5,minmax(100px,.9fr));}
+.tgt-row .forecast-cell{grid-column:1 / -1;font-size:12px;}
+.tgt-row .shape-cell{grid-column:1 / -1;font-size:12px;}
+.tgt-row .shape-cell summary{cursor:pointer;color:var(--muted);}
+.tgt-row .shape-cell form{margin-top:8px;max-width:560px;}
+.tgt-row .shape-cell .weights{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:4px;margin:8px 0;}
+.tgt-row .shape-cell .weights label{display:flex;flex-direction:column;align-items:center;gap:2px;font-size:10.5px;color:var(--muted);}
+.tgt-row .shape-cell .weights input{width:100%;min-width:0;padding:3px 2px;text-align:center;font-size:12px;}
+@media (max-width:900px){.tgt-row.pt-row{grid-template-columns:1fr 1fr;}.tgt-row .shape-cell .weights{grid-template-columns:repeat(6,1fr);}}
+.tgt-row.tax-row{grid-template-columns:minmax(120px,1.2fr) repeat(5,minmax(90px,.9fr));}
+@media (max-width:900px){.tgt-row.tax-row{grid-template-columns:1fr 1fr;}}

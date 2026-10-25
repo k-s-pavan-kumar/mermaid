@@ -41,6 +41,8 @@ export async function Shell({
     { label: 'Dashboard — targets, time split & financial goal', href: '/dashboard', group: 'Page', hint: 'g d' },
     { label: 'Projects', href: '/projects', group: 'Page', hint: 'g p' },
     { label: 'Products — a SaaS with its app, book, game & marketing', href: '/products', group: 'Page', hint: 'g m' },
+    { label: 'Weekly digest — received, targets, who to chase', href: '/digest', group: 'Page', hint: 'g y' },
+    { label: 'Tax summary — GST, TDS & 26AS', href: '/billing/tax', group: 'Page' },
     { label: 'Goals — yearly goals & month-wise project plan', href: '/goals', group: 'Page', hint: 'g o' },
     { label: 'Clients', href: '/clients', group: 'Page', hint: 'g c' },
     { label: 'TPN Audits — audit clients, quotes & invoices', href: '/tpn-audits', group: 'Page', hint: 'g w' },

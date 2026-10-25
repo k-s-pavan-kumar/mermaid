@@ -4,9 +4,12 @@ import { Shell } from '@/components/Shell';
 import { GoalsBoard } from '@/features/goals/components/GoalsBoard';
 import { getFieldsSafe } from '@/features/tags/queries';
 import { FieldProjects } from '@/features/tags/components/FieldProjects';
-import { loadTargetData } from '@/features/targets/queries';
+import { getFieldCosts, loadTargetData } from '@/features/targets/queries';
+import { fieldView } from '@/features/targets/view';
+import { AgingPanel } from '@/features/targets/components/AgingPanel';
+import { FieldCosts } from '@/features/targets/components/FieldCosts';
+import { getSessionDisplayName } from '@/lib/auth/session';
 import { FieldTargetCards } from '@/features/targets/components/FieldTargetCards';
-import { nowIndex, summarise } from '@/features/targets/compute';
 import { todayIso } from '@/lib/tz/today';
 import { getProjects } from '@/features/projects/queries';
 import { getClients } from '@/features/clients/queries';
@@ -32,13 +35,15 @@ export default async function FieldPage({
   const today = todayIso();
   const parsed = Number(sp.year);
   const year = Number.isInteger(parsed) && parsed >= 2000 && parsed <= 2100 ? parsed : Number(today.slice(0, 4));
-  const [projects, clients, targetData] = await Promise.all([getProjects(), getClients(email), loadTargetData(email, year)]);
+  const [projects, clients, targetData, costs, sender] = await Promise.all([getProjects(), getClients(email), loadTargetData(email, year), getFieldCosts(email, year, { fieldId: field.id }), getSessionDisplayName()]);
   const myClients = clients.filter((c) => clientWorkTypes(c).some((t) => t.toLowerCase() === field.name.toLowerCase()));
-  const summary = summarise(targetData.targets.get(field.id) ?? 0, targetData.monthly.get(field.id) ?? Array.from({ length: 12 }, () => 0), nowIndex(year, today));
+  const view = fieldView(field.id, targetData, year, today);
 
   return (
     <Shell active={`field:${field.id}`} title={field.name} crumb="Fields">
-      <FieldTargetCards name={field.name} year={year} s={summary} outstanding={targetData.outstanding.get(field.id) ?? 0} />
+      <FieldTargetCards name={field.name} year={year} view={view} />
+      <AgingPanel receivables={view.receivables} sender={sender ?? undefined} />
+      <FieldCosts fieldId={field.id} costs={costs} today={today} year={year} />
 
       <div className="grid-2-eq" style={{ marginBottom: 24, gap: 16, alignItems: 'start' }}>
         <FieldProjects field={field} projects={projects} clients={clients} />

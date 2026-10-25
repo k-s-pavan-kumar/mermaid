@@ -7,6 +7,7 @@ import { table } from '@/lib/data';
 import { Shell } from '@/components/Shell';
 import { WeekGrid } from '@/features/calendar/components/WeekGrid';
 import { MonthBoard } from '@/features/calendar/components/MonthBoard';
+import { DatesStrip } from '@/features/calendar/components/DatesStrip';
 import { getDayStats } from '@/features/today/momentum';
 import { todayIso, shiftIso } from '@/lib/tz/today';
 import type { Task } from '@/features/today/types';
@@ -42,6 +43,7 @@ export default async function CalendarPage({
           <a href="/calendar">Week</a>
           <a href="/calendar?view=month" className="active">Month</a>
         </div>
+        <DatesStrip email={email} from={first} to={last} />
         <MonthBoard year={year} month={monthIndex} realToday={realToday} stats={stats} />
       </Shell>
     );
@@ -67,6 +69,7 @@ export default async function CalendarPage({
         <a href="/calendar" className="active">Week</a>
         <a href="/calendar?view=month">Month</a>
       </div>
+      <DatesStrip email={email} from={weekStart} to={weekEnd} />
       <WeekGrid
         weekStart={weekStart}
         realToday={realToday}

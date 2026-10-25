@@ -4,7 +4,8 @@ import { Shell } from '@/components/Shell';
 import { SubmitButton } from '@/components/SubmitButton';
 import { ActionButton } from '@/components/ActionButton';
 import { getAudits } from '@/features/audits/queries';
-import { addAudit, updateAudit, setAuditStage, deleteAudit } from '@/features/audits/actions';
+import { addAudit, updateAudit, setAuditStage, deleteAudit, toggleAuditCheck, addAuditCheck, removeAuditCheck, createInvoiceFromAudit } from '@/features/audits/actions';
+import { readChecklist, checklistProgress } from '@/features/launch/checklist';
 import { AUDIT_STAGES, AUDIT_STAGE_LABEL, auditTotals, type Audit, type AuditStage } from '@/features/audits/types';
 import { getGoals } from '@/features/goals/queries';
 import { GoalsBoard } from '@/features/goals/components/GoalsBoard';
@@ -149,6 +150,48 @@ export default async function TpnAuditsPage({ searchParams }: { searchParams: Pr
               <span><span className="text-muted">Paid</span> {inr(a.paid_amount)}</span>
               {due > 0 && <span style={{ color: 'var(--crimson)' }}>Due {inr(due)}</span>}
             </div>
+
+            {(() => {
+              const items = readChecklist(a.checklist);
+              const prog = checklistProgress(items);
+              const convertible = !a.billing_invoice_id && a.paid_amount === 0 && (a.invoice_amount ?? a.quote_amount ?? 0) > 0;
+              return (
+                <>
+                  {a.billing_invoice_id && (
+                    <p style={{ fontSize: 12.5, margin: '10px 0 0' }}>
+                      💳 This audit is invoiced in <a href={`/billing/invoices/${a.billing_invoice_id}`}>Billing{a.invoice_ref ? ` (${a.invoice_ref})` : ''}</a>. Billing now tracks the money, so the figures below are no longer counted in your totals.
+                    </p>
+                  )}
+                  {convertible && (
+                    <div style={{ marginTop: 10 }}>
+                      <ActionButton
+                        action={async () => { 'use server'; await createInvoiceFromAudit(a.id); }}
+                        className="btn-ghost" pendingLabel="Creating…"
+                        confirm={`Create a real invoice in Billing for ${a.client_name}? Payments will then be recorded there (and count toward your TPN yearly target). The amounts on this card stop being counted.`}
+                      >Create invoice in Billing</ActionButton>
+                    </div>
+                  )}
+                  <details style={{ marginTop: 10 }}>
+                    <summary style={{ cursor: 'pointer', fontSize: 12.5 }}>Checklist · {prog.done}/{prog.total} done ({prog.pct}%)</summary>
+                    <div className="goal-bar" style={{ margin: '8px 0' }}><span style={{ width: `${prog.pct}%` }} /></div>
+                    {items.map((it) => (
+                      <div key={it.id} className="list-row" style={{ fontSize: 13 }}>
+                        <ActionButton
+                          action={async () => { 'use server'; await toggleAuditCheck(a.id, it.id); }}
+                          className="btn-link" pendingLabel="…"
+                          style={{ textAlign: 'left', textDecoration: it.done ? 'line-through' : 'none', color: it.done ? 'var(--muted)' : undefined }}
+                        >{it.done ? '☑' : '☐'} {it.label}</ActionButton>
+                        <ActionButton action={async () => { 'use server'; await removeAuditCheck(a.id, it.id); }} className="df-del" title="Remove item" pendingLabel="…">×</ActionButton>
+                      </div>
+                    ))}
+                    <form action={addAuditCheck.bind(null, a.id)} className="form-row" style={{ marginTop: 8, marginBottom: 0 }}>
+                      <input name="label" placeholder="Add a step or document, e.g. Fire safety certificate" maxLength={120} required />
+                      <SubmitButton className="btn-ghost" pendingLabel="Adding…">Add</SubmitButton>
+                    </form>
+                  </details>
+                </>
+              );
+            })()}
 
             <details style={{ marginTop: 10 }}>
               <summary style={{ cursor: 'pointer', fontSize: 12.5 }}>Details, quote &amp; invoice</summary>

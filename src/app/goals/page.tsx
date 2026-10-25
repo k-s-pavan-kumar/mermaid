@@ -7,6 +7,7 @@ import { getProductsSafe } from '@/features/products/queries';
 import { loadTargetData } from '@/features/targets/queries';
 import { TargetsOverview } from '@/features/targets/components/TargetsOverview';
 import { todayIso } from '@/lib/tz/today';
+import { getSessionDisplayName } from '@/lib/auth/session';
 
 /**
  * Goals across your fields (SaaS, Gaming, Publishing, …). TPN's goals are
@@ -20,10 +21,10 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
   const today = todayIso();
   const parsed = Number(sp.year);
   const year = Number.isInteger(parsed) && parsed >= 2000 && parsed <= 2100 ? parsed : Number(today.slice(0, 4));
-  const [fields, products, targetData] = await Promise.all([getFieldsSafe(email), getProductsSafe(email), loadTargetData(email, year)]);
+  const [fields, products, targetData, sender] = await Promise.all([getFieldsSafe(email), getProductsSafe(email), loadTargetData(email, year), getSessionDisplayName()]);
   return (
     <Shell active="goals" title="Goals" crumb="Workspace">
-      <TargetsOverview year={year} today={today} data={targetData} />
+      <TargetsOverview year={year} today={today} data={targetData} sender={sender ?? undefined} />
       <GoalsBoard email={email} year={sp.year} view={sp.view} notice={sp.notice} basePath="/goals" scope={{ kind: 'all' }} fields={fields} products={products} />
     </Shell>
   );

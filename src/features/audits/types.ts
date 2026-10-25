@@ -41,6 +41,10 @@ export interface Audit {
   /** 'YYYY-MM' inside the goal's year. */
   goal_month: string | null;
   notes: string | null;
+  /** Document / step checklist (JSON); null = the default template. */
+  checklist?: unknown;
+  /** Set once the audit has been turned into a real Billing invoice; Billing then owns the money. */
+  billing_invoice_id?: string | null;
   created_at: string;
 }
 
@@ -60,8 +64,11 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 export function auditTotals(audits: Audit[]): AuditTotals {
   const t: AuditTotals = { active: 0, quoted: 0, invoiced: 0, received: 0, outstanding: 0 };
   for (const a of audits) {
+    // Once an audit is invoiced in Billing, Billing owns the money; count it there, never twice.
+    const billed = !!a.billing_invoice_id;
     if (a.stage !== 'paid' && a.stage !== 'lost') t.active++;
     if (a.stage !== 'lost') t.quoted += a.quote_amount ?? 0;
+    if (billed) continue;
     t.invoiced += a.invoice_amount ?? 0;
     t.received += a.paid_amount ?? 0;
     t.outstanding += Math.max(0, (a.invoice_amount ?? 0) - (a.paid_amount ?? 0));

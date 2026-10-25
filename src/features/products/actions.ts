@@ -117,3 +117,15 @@ export async function deleteProduct(productId: string): Promise<void> {
   await table<Product>('products').remove(productId);
   refresh();
 }
+
+/** Set (or clear) a product's launch date. Form: launch_date. */
+export async function setLaunchDate(productId: string, formData: FormData): Promise<void> {
+  const owner = await requireOwner();
+  if (!(await ownProduct(owner, productId))) return;
+  const raw = String(formData.get('launch_date') ?? '').trim();
+  const launch_date = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+  await table<Product>('products').update(productId, { launch_date } as Partial<Product>);
+  refresh(productId);
+  revalidatePath('/calendar');
+  revalidatePath('/digest');
+}

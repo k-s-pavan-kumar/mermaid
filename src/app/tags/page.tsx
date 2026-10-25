@@ -4,7 +4,7 @@ import { Shell } from '@/components/Shell';
 import { SubmitButton } from '@/components/SubmitButton';
 import { ActionButton } from '@/components/ActionButton';
 import { getTags } from '@/features/tags/queries';
-import { addTag, deleteTag, setTagIcon, setTagIsField } from '@/features/tags/actions';
+import { addTag, deleteTag, mergeTag, renameTag, setTagIcon, setTagIsField } from '@/features/tags/actions';
 import { IconPicker, TagIcon, iconKeyFor } from '@/features/tags/icons';
 import { TAG_COLORS, fieldHref, type Tag } from '@/features/tags/types';
 
@@ -46,11 +46,29 @@ export default async function TagsPage() {
         )}
       </span>
       <details style={{ flexBasis: '100%', margin: '2px 0 6px 26px' }}>
-        <summary className="text-muted" style={{ cursor: 'pointer', fontSize: 12 }}>Change icon</summary>
-        <form action={setTagIcon.bind(null, t.id)} style={{ marginTop: 8 }}>
-          <IconPicker defaultValue={iconKeyFor(t)} color={t.color} />
-          <SubmitButton className="btn-link" pendingLabel="Saving…">Save icon</SubmitButton>
-        </form>
+        <summary className="text-muted" style={{ cursor: 'pointer', fontSize: 12 }}>Edit · icon, rename{t.special ? '' : ', merge'}</summary>
+        <div style={{ display: 'grid', gap: 14, marginTop: 8 }}>
+          <form action={setTagIcon.bind(null, t.id)}>
+            <IconPicker defaultValue={iconKeyFor(t)} color={t.color} />
+            <SubmitButton className="btn-link" pendingLabel="Saving…">Save icon</SubmitButton>
+          </form>
+          <form action={renameTag.bind(null, t.id)} className="form-row" style={{ marginBottom: 0 }}>
+            <input name="name" defaultValue={t.name} maxLength={30} required aria-label={`New name for ${t.name}`} />
+            <SubmitButton className="btn-ghost" pendingLabel="Renaming…">Rename everywhere</SubmitButton>
+          </form>
+          {!t.special && (
+            <form action={mergeTag.bind(null, t.id)} className="form-row" style={{ marginBottom: 0 }}>
+              <select name="into" required defaultValue="" aria-label={`Merge ${t.name} into`}>
+                <option value="" disabled>Merge “{t.name}” into…</option>
+                {tags.filter((o) => o.id !== t.id).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+              </select>
+              <SubmitButton className="btn-ghost" pendingLabel="Merging…">Merge</SubmitButton>
+            </form>
+          )}
+          <p className="text-muted" style={{ fontSize: 11.5, margin: 0 }}>
+            Rename updates every client that carries the tag. Merge moves clients, goals and projects to the other tag, then removes this one.
+          </p>
+        </div>
       </details>
     </div>
   );

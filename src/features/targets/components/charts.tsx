@@ -21,7 +21,7 @@ function niceTop(v: number): number {
  * Each bar is labelled with its amount. Capped in width so it stays a small,
  * glanceable strip however wide the page is.
  */
-export function ProgressChart({ s, label }: { s: TargetSummary; label: string }) {
+export function ProgressChart({ s, label, recurring }: { s: TargetSummary; label: string; recurring?: number[] }) {
   const W = 720, H = 168, L = 40, R = 44, T = 16, B = 20;
   const cum = s.cumulative.filter((v): v is number => v !== null);
   const barTop = niceTop(Math.max(...s.monthly, 1));
@@ -51,6 +51,12 @@ export function ProgressChart({ s, label }: { s: TargetSummary; label: string })
                   y={yBar(v)} height={Math.max(1.5, yBar(0) - yBar(v))} rx={2} fill="var(--pine)" opacity={0.32}>
               <title>{`${MONTH_FULL[i]}: ${inr0(v)}`}</title>
             </rect>
+            {recurring && (recurring[i] ?? 0) > 0 && (
+              <rect className="anim-bar" style={{ ['--i' as string]: i }} x={cx(i) - band * 0.3} width={band * 0.6}
+                    y={yBar(Math.min(v, recurring[i]!))} height={Math.max(1.5, yBar(0) - yBar(Math.min(v, recurring[i]!)))} rx={2} fill="var(--pine)" opacity={0.7}>
+                <title>{`${MONTH_FULL[i]}: ${inr0(recurring[i]!)} recurring`}</title>
+              </rect>
+            )}
             <text className="anim-fade" x={cx(i)} y={yBar(v) - 3} fontSize="8.5" textAnchor="middle" fill="var(--pine)" fontWeight="600">{compact(v)}</text>
           </g>
         ))}
@@ -69,6 +75,7 @@ export function ProgressChart({ s, label }: { s: TargetSummary; label: string })
       </svg>
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11, marginTop: 2 }} className="text-muted">
         <span><span style={{ display: 'inline-block', width: 9, height: 9, background: 'var(--pine)', opacity: 0.4, borderRadius: 2, marginRight: 4 }} />Received that month (left scale)</span>
+        {recurring && recurring.some((x) => x > 0) && <span><span style={{ display: 'inline-block', width: 9, height: 9, background: 'var(--pine)', opacity: 0.75, borderRadius: 2, marginRight: 4 }} />of which recurring</span>}
         <span><span style={{ display: 'inline-block', width: 11, height: 3, background: 'var(--sage)', borderRadius: 2, marginRight: 4, verticalAlign: 'middle' }} />Running total (right scale)</span>
         {s.target > 0 && <span><span style={{ display: 'inline-block', width: 11, borderTop: '2px dashed var(--muted)', marginRight: 4, verticalAlign: 'middle' }} />Plan to target</span>}
       </div>

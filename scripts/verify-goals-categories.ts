@@ -287,6 +287,96 @@ async function main() {
   eq(td.outstanding.get(mktId), 5000, "partly-paid client invoice: only the unpaid 5,000 is outstanding, credited via the client's field tag");
   eq(td.monthly.get(mktId)?.[8], 3000, 'and its 3,000 payment is reached in September, in the same field');
 
+  // ---- 12. the 12 additions: shape, forecast, aging, profit, tax, launch, checklist, tags, digest ----
+  const wts = TG.planShares([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]);
+  eq([Math.round(wts[0]! * 1200) / 100, wts[11]], [1, 1], 'even weights give a straight plan ending at 100%');
+  const back = TG.planShares([1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 13]);
+  eq(back[10]! < 0.5 && back[11] === 1, true, 'a December-heavy shape keeps the plan low until the end');
+  eq(TG.planShares([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])[5], 0.5, 'invalid / all-zero weights fall back to even');
+  const shaped = TG.summariseShaped(120000, Array(12).fill(0), 5, [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 13]);
+  eq(shaped.expectedToDate, 30000, 'back-loaded plan expects only 6/24 of the target by the end of June (an even plan expects half)');
+  eq(TG.summariseShaped(120000, Array(12).fill(0), 5).expectedToDate, 60000, 'no weights: the straight-line plan, half the target by the end of June');
+  const fc = TG.forecast(120000, 50000, 10000, 2026, '2026-06-16'); // 5.53 months elapsed
+  eq([fc.basis, fc.projected, fc.onPace, fc.toBill], ['run-rate', 108433.73, false, 60000], 'forecast carries the run-rate to December; toBill = pending minus outstanding');
+  eq(TG.forecast(100000, 100000, 0, 2025, '2026-06-16'), { projected: 100000, shortBy: 0, onPace: true, toBill: 0, basis: 'final' }, 'a past year is final');
+  eq(TG.forecast(100000, 0, 0, 2027, '2026-06-16').basis, 'none', 'a future year has no forecast');
+  eq([TG.agingBucket(-5), TG.agingBucket(0), TG.agingBucket(1), TG.agingBucket(30), TG.agingBucket(31), TG.agingBucket(60), TG.agingBucket(61)], ['notdue', 'notdue', 'd30', 'd30', 'd60', 'd60', 'd60plus'], 'aging buckets');
+  const rcv = TG.makeReceivable({ id: 'x', number: 'INV-9', who: 'Aruna', owed: 20000, issued: '2026-08-01', due: '2026-09-01', fieldId: null, href: null }, '2026-10-19');
+  eq([rcv.daysLate, rcv.bucket], [48, 'd60'], 'days late are counted from the due date');
+  eq(TG.makeReceivable({ id: 'y', number: 'N', who: '', owed: 1, issued: '2026-10-01', due: null, fieldId: null, href: null }, '2026-10-19').daysLate, 18, 'no due date: counted from the issue date');
+  eq(TG.reminderText(rcv, 'Pavan').includes('INV-9') && TG.reminderText(rcv).includes('₹20,000') && TG.reminderText(rcv).includes('48 days past'), true, 'reminder names the invoice, amount and lateness');
+  eq(TG.agingTotals([rcv, { ...rcv, id: 'z', owed: 500 }])['d60'], { count: 2, amount: 20500 }, 'aging totals');
+  eq(TG.profitOf(100000, 30000), { revenue: 100000, costs: 30000, profit: 70000, marginPct: 70 }, 'profit and margin');
+  eq(TG.profitOf(0, 500).marginPct, null, 'no revenue = no margin');
+  eq([TG.effectiveRate(60000, 600), TG.effectiveRate(0, 600), TG.effectiveRate(5000, 0)], [6000, null, null], 'effective hourly rate');
+  eq(TG.recentMonthlyAverage([0, 0, 0, 0, 0, 0, 0, 3000, 6000, 9000, 0, 0], 9), 6000, 'MRR = average of the last three months');
+
+  const TX = await import('../src/features/tax/compute');
+  eq([TX.fyOf('2026-03-31'), TX.fyOf('2026-04-01'), TX.fyOf('2026-12-31')], [2025, 2026, 2026], 'Indian financial year boundaries');
+  eq([TX.fyLabel(2026), TX.fyMonths(2026)[0], TX.fyMonths(2026)[11]], ['FY 2026-27', '2026-04', '2027-03'], 'FY label and months run April to March');
+  const taxInv = (over: Record<string, unknown>) => ({ id: 'i', owner_id: 'me', project_id: null, client_id: 'c1', stream: 'freelance', number: 'N', description: null, items: [], amount: 10000, tax_pct: 18, currency: 'INR', notes: null, issued_at: '2026-05-10', quote_id: null, status: 'pending', due_at: null, paid_at: null, tds_amount: 0, ...over }) as never;
+  const ts = TX.taxSummary([taxInv({}), taxInv({ id: 'j', tds_amount: 1000, tax_pct: 0, issued_at: '2026-05-20' }), taxInv({ id: 'k', status: 'draft' }), taxInv({ id: 'l', issued_at: '2027-04-02' }), taxInv({ id: 'm', issued_at: '2026-03-31' }), taxInv({ id: 'n', issued_at: '2027-02-01', tax_pct: 0, amount: 5000 })], new Map([['c1', 'Acme']]), 2026);
+  eq([ts.totals.invoices, ts.totals.taxable, ts.totals.gst, ts.totals.tds, ts.totals.billed], [3, 25000, 1800, 1000, 26800], 'tax totals: this FY only (Apr 2026–Mar 2027); drafts and other FYs excluded');
+  eq([ts.months[1]!.month, ts.months[1]!.invoices, ts.months[1]!.gst], ['2026-05', 2, 1800], 'monthly row');
+  eq([ts.quarters[0]!.gst, ts.quarters[3]!.taxable], [1800, 5000], 'quarters: Apr-Jun and Jan-Mar');
+  eq([ts.byClient[0]!.name, ts.byClient[0]!.tds], ['Acme', 1000], 'TDS by client');
+  const csv = TX.taxCsv(ts, new Set(['c1']));
+  eq(csv.includes('Month,Invoices,Taxable value') && csv.includes('Acme,3,26800,1000,Yes'), true, 'CSV has both sections and the 26AS tick');
+  eq(TX.taxCsv({ ...ts, byClient: [{ clientId: null, name: 'A, "B"', invoices: 1, billed: 1, tds: 0 }] }, new Set()).includes('"A, ""B"""'), true, 'CSV escapes commas and quotes');
+
+  const LN = await import('../src/features/launch/compute');
+  const piece = (over: Record<string, unknown>) => ({ id: 'p', name: 'Book', role: 'book', status: 'ontrack', milestonesDone: 0, milestonesTotal: 0, tasksDone: 0, tasksOpen: 0, ...over }) as never;
+  eq([LN.pieceReadiness(piece({ status: 'done' })), LN.pieceReadiness(piece({})), LN.pieceReadiness(piece({ milestonesDone: 2, milestonesTotal: 4, tasksDone: 5, tasksOpen: 5 }))], [100, 45, 48], 'readiness: done=100, status guess, or measured from milestones + tasks');
+  eq(LN.launchPlan(null, '2026-10-19', [piece({})]).verdict, 'no-date', 'no launch date');
+  const lp = LN.launchPlan('2026-10-26', '2026-10-19', [piece({ id: 'a', name: 'SaaS', status: 'done' }), piece({ id: 'b', name: 'Game', status: 'ontrack' }), piece({ id: 'c', name: 'Mkt', status: 'review' })]);
+  eq([lp.daysToLaunch, lp.verdict, lp.blockers.map((b) => b.name)], [7, 'at-risk', ['Game']], 'a launch a week out with a 45%-ready piece is at risk and names the blocker');
+  eq(LN.launchPlan('2026-10-01', '2026-10-19', [piece({})]).verdict, 'late', 'launch date passed, work not done');
+  eq(LN.launchPlan('2026-10-01', '2026-10-19', [piece({ status: 'done' })]).verdict, 'launched', 'everything done = launched');
+  eq(LN.launchPlan('2027-03-01', '2026-10-19', [piece({})]).verdict, 'on-track', 'plenty of time = on track');
+
+  const CL = await import('../src/features/launch/checklist');
+  eq(CL.readChecklist(null).length, CL.DEFAULT_AUDIT_CHECKLIST.length, 'no stored checklist -> the default template');
+  const t1 = CL.toggleItem(CL.readChecklist(null), 'd2');
+  eq([CL.checklistProgress(t1).done, CL.checklistProgress(t1).pct], [1, 8], 'ticking an item updates progress');
+  const t2 = CL.addItem(t1, '  Fire safety cert ', 'x1');
+  eq(t2.length, t1.length + 1, 'add a custom item');
+  eq(CL.addItem(t2, 'fire safety CERT', 'x2').length, t2.length, 'no duplicate items (case-insensitive)');
+  eq(CL.readChecklist([{ id: 1 }, 'junk']).length, CL.DEFAULT_AUDIT_CHECKLIST.length, 'junk in storage falls back to the template');
+
+  const TOPS = await import('../src/features/tags/ops');
+  eq(TOPS.replaceTagInList(['web', 'Publishing', 'Photography'], 'publishing', 'Book Publishing'), ['web', 'Book Publishing', 'Photography'], 'rename inside a client tag list');
+  eq(TOPS.replaceTagInList(['Publishing', 'Book Publishing'], 'Publishing', 'Book Publishing'), ['Book Publishing'], 'merge collapses duplicates');
+  eq([TOPS.renameProblem('', []), TOPS.renameProblem('saas', ['SaaS']) !== null, TOPS.renameProblem('New', ['SaaS'])], ['Type a name.', true, null], 'rename validation');
+
+  const DG = await import('../src/features/targets/digest');
+  const dtxt = DG.digestText({ weekLabel: 'week of 19 Oct', receivedThisWeek: 25000, payments: [{ label: 'INV-1 · Acme', amount: 25000 }],
+    fields: [{ name: 'SaaS', target: 100000, reached: 40000, pct: 40, onPace: false, toBill: 30000 }, { name: 'Gaming', target: 0, reached: 0, pct: 0, onPace: null, toBill: 0 }],
+    chasing: [{ number: 'INV-9', who: 'Aruna', owed: 20000, daysLate: 48 }], comingUp: ['Launch of ISM in 7 days'] });
+  eq(['Received this week: ₹25,000', 'SaaS: ₹40,000 of ₹1,00,000 (40%) · behind pace · still to bill ₹30,000', 'INV-9 · Aruna — ₹20,000, 48d late', 'Launch of ISM in 7 days'].every((x) => dtxt.includes(x)) && !dtxt.includes('Gaming'), true, 'digest text covers money, targets, chasing and upcoming');
+
+  // ---- 13. calendar dates, view model, converted audits ------------------
+  const CD = await import('../src/features/calendar/dates');
+  const evs = CD.datedEvents({
+    from: '2026-10-19', to: '2026-10-25',
+    audits: [{ id: 'a1', client_name: 'Acme', company: 'Acme Studios', audit_date: '2026-10-22', stage: 'accepted' }, { id: 'a2', client_name: 'Gone', company: null, audit_date: '2026-10-23', stage: 'lost' }, { id: 'a3', client_name: 'Later', company: null, audit_date: '2026-11-02', stage: 'lead' }],
+    products: [{ id: 'p1', name: 'ISM', launch_date: '2026-10-25' }, { id: 'p2', name: 'Other', launch_date: null }],
+    openInvoices: [{ id: 'i1', number: 'INV-7', due_at: '2026-10-21', owed: 5000, who: 'Aruna' }, { id: 'i2', number: 'INV-8', due_at: '2026-10-21', owed: 0, who: '' }],
+  });
+  eq(evs.map((e) => `${e.date} ${e.kind}`), ['2026-10-21 due', '2026-10-22 audit', '2026-10-25 launch'], 'calendar strip: in-range audits, launches and unpaid dues only (lost audits and paid invoices left out), in date order');
+  eq(evs[0]!.label, 'Due · INV-7 (Aruna) · ₹5,000', 'due label');
+
+  const VW = await import('../src/features/targets/view');
+  const VD = await TQY.loadTargetData(OW, 2026);
+  const vv = VW.fieldView(saasId, VD, 2026, '2026-10-19');
+  eq([vv.outstanding, vv.target, vv.receivables.length], [5000, 0, 1], 'fieldView ties outstanding, target and receivables together');
+  eq(vv.receivables[0]?.number, 'N', "receivables carry the invoice's number");
+  eq(VD.receivables.filter((r) => r.fieldId === null).length, 1, 'an invoice in no field is still listed (so it can be chased and assigned)');
+
+  const AUD = await import('../src/features/audits/types');
+  const aud = (over: Record<string, unknown>) => ({ id: 'z', owner_id: 'me', client_name: 'C', company: null, email: null, phone: null, scope: null, stage: 'invoiced', quote_amount: 10000, quote_sent_on: null, quote_ref: null, invoice_amount: 10000, invoice_ref: null, invoice_sent_on: null, paid_amount: 2000, paid_on: null, audit_date: null, goal_id: null, goal_month: null, notes: null, created_at: '', ...over }) as never;
+  const atot = AUD.auditTotals([aud({}), aud({ billing_invoice_id: 'inv-x' })]);
+  eq([atot.invoiced, atot.received, atot.outstanding, atot.quoted], [10000, 2000, 8000, 20000], 'an audit invoiced in Billing is not counted twice in the audit totals');
+
   console.log(failed ? `\n${failed} FAILED` : '\nall passed');
   process.exit(failed ? 1 : 0);
 }

@@ -57,6 +57,8 @@ export type LocalDB = {
   tags?: any[];
   products?: any[];
   field_targets?: any[];
+  field_costs?: any[];
+  tds_checks?: any[];
   analytics_daily?: any[];
   analytics_users?: any[];
 };

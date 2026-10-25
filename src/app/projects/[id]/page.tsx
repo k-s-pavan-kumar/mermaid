@@ -470,6 +470,9 @@ export default async function ProjectDetailPage({
             <input name="description" placeholder="Description" />
             <input name="amount" type="number" step="0.01" min="0" placeholder="Amount (₹)" required />
             <input name="tax_pct" type="number" step="0.01" min="0" max="100" placeholder="Tax % (blank = default)" aria-label="Tax percent" />
+            <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 12.5 }} title="A retainer or subscription — shown as recurring income on the field page">
+              <input type="checkbox" name="recurring" /> Recurring
+            </label>
             <select name="status" defaultValue="pending">
               <option value="draft">Draft</option><option value="pending">Pending</option>
               <option value="paid">Paid</option><option value="overdue">Overdue</option>

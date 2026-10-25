@@ -156,7 +156,8 @@ export default async function BillingPage({ searchParams }: { searchParams: Prom
   );
 
   return (
-    <Shell active="billing" title="Billing" crumb="Workspace">
+    <Shell active="billing" title="Billing" crumb="Workspace"
+      action={<a href="/billing/tax" className="btn-ghost" style={{ textDecoration: 'none' }}>Tax summary</a>}>
       <UnrecordedBanner count={unrecorded.length} amount={unrecorded.reduce((a, b) => a + b, 0)}
         action={async () => { 'use server'; await recordMissingPayments(); }} />
       <div className="stat-row three">

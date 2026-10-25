@@ -50,6 +50,8 @@ export interface Quote extends BillingDoc {
 }
 
 export interface Invoice extends BillingDoc {
+  /** Subscription-style income (retainer or ticked 'recurring'); see isRecurringInvoice. */
+  recurring?: boolean;
   quote_id: string | null;
   /** 'YYYY-MM' — set only on invoices made by the monthly-retainer flow, one per client per month. */
   period?: string | null;
@@ -133,3 +135,6 @@ export function sumInvoiceMoney(invoices: Invoice[], paidTotals: Map<string, num
   }
   return { billed: r2(t.billed), cleared: r2(t.cleared), outstanding: r2(t.outstanding), unrecorded: r2(t.unrecorded) };
 }
+
+/** A subscription / retainer: made by the monthly-retainer flow (has a period) or ticked "recurring". */
+export const isRecurringInvoice = (inv: Pick<Invoice, 'period'> & { recurring?: boolean }) => !!inv.period || inv.recurring === true;
